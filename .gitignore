@@ -1,0 +1,7 @@
+# Ignore everything by default
+*
+
+# Except docs directory and gitignore itself
+!docs/
+!docs/**
+!.gitignore
