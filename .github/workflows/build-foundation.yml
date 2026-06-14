@@ -1,0 +1,37 @@
+# OPTIONAL / swappable hosted CI. The PRIMARY build gate is the local dev
+# container — `make verify` in ranserver-linux/ (free, portable, account-
+# independent; aligns with pilar 4 OpEx + A2 cloud-exit). This GitHub Actions
+# workflow is just one convenient hosted option and may be removed or replaced
+# (self-hosted runner / Gitea Actions / `make ci`) without losing the gate.
+name: build-foundation
+
+on:
+  push:
+    paths:
+      - "ranserver-linux/**"
+      - ".github/workflows/build-foundation.yml"
+  pull_request:
+    paths:
+      - "ranserver-linux/**"
+      - ".github/workflows/build-foundation.yml"
+  workflow_dispatch:
+
+jobs:
+  linux:
+    runs-on: ubuntu-22.04
+    defaults:
+      run:
+        working-directory: ranserver-linux
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake g++ make libboost-dev libboost-system-dev unixodbc-dev
+      - name: Configure
+        run: cmake -B build -S .
+      - name: Build
+        run: cmake --build build
+      - name: Smoke
+        run: ./build/foundation_smoke

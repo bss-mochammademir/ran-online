@@ -250,6 +250,17 @@ API pay-per-token (per 1M, indikatif): Claude **Haiku 4.5** $1/$5 · **Sonnet 4.
 2. **Akselerasi**: tambahkan **API pay-per-token** saat butuh paralelisme besar tanpa rest — biaya naik, wall-clock turun.
 3. **Konsisten dengan pilar 4**: total biaya bulanan tim AI-agent (langganan + sedikit API overflow) jauh di bawah mandays-equivalent satu engineer → menjaga **OpEx rendah = kemerdekaan etis**.
 
+### 10.5 Infrastruktur & tooling (CI/CD)
+Selain biaya agen, ada biaya **tooling** yang awalnya terlewat dari analisis ini. Yang sebenarnya dibutuhkan adalah **verifikasi build/test otomatis di Linux bersih** (menegakkan gate §7), **bukan** penyedia CI tertentu. Pilih yang selaras pilar 4 (OpEx rendah) & A2 (cloud-exit / hindari lock-in):
+
+| Opsi verifikasi | Biaya | Portabilitas |
+| :--- | :--- | :--- |
+| **Dev-container lokal** (`Dockerfile.dev` → `make verify`) | **Rp 0** | Tinggi — **gate utama (default)** |
+| Self-hosted runner / Gitea Actions / target `make ci` | Rendah | Tinggi (cloud-exit) |
+| GitHub Actions hosted | Minutes (berbayar pada repo privat) | Rendah (lock-in) — **opsional & swappable** |
+
+**Aturan**: jadikan **dev-container lokal sebagai gate utama** (gratis, portabel, tak bergantung akun); perlakukan hosted CI sebagai opsi yang bisa ditukar — **jangan** menjadikan CI ber-akun sebagai dependency *load-bearing* (insiden lock-billing membuktikan risikonya nyata). Catatan biaya cloud lain (K8s, lisensi SQL Server, dll.) diatur di [ADR-001](adr/ADR-001-cloud-native-vs-rejuvenation.md) & master plan, bukan di sini.
+
 ---
 
 ## 11. Referensi
