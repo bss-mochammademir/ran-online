@@ -62,6 +62,7 @@ Kriteria selesai: <build/test/paritas/output yang membuktikan beres>
 Verifikasi: <perintah konkret, mis. `cmake --build … && ctest`>
 Branch/worktree: <isolasi>
 Gate: <perlu review manusia? untuk apa?>
+Model & effort: <mis. "Sonnet 4.6 @ medium" — lihat §9; wajib diisi>
 ```
 
 ---
@@ -177,6 +178,8 @@ Mulai dari **L0/L1** (spike DB & porting), naik ke **L2** saat shared layer stab
 ## 9. Literasi Model — Memilih Model & Effort per Chip
 
 Efisiensi biaya delivery (prinsip [pilar 4](00_design_pillars.md), "OpEx rendah = kemerdekaan etis") **menyentuh pemilihan model** untuk tiap chip. Prinsip inti: **cocokkan kapabilitas model dengan kompleksitas & risiko chip — bukan "selalu pakai yang termahal".** Karena setiap chip punya *gate* objektif (build/test/paritas, §7), model murah **aman** untuk chip low-risk; model mahal disimpan untuk chip kritis & ber-*gate manusia* (§6).
+
+> ✅ **Praktik wajib (standing rule).** Setiap kali memulai sebuah tugas/chip — termasuk menjawab pertanyaan yang memicu pekerjaan — **buka dengan satu baris rekomendasi**: *"Model untuk aktivitas ini: `<model>` @ `<effort>` — `<alasan singkat>`"*, baru kerjakan. Field **Model & effort** juga wajib diisi di chip-spec ([§3](#3-anatomi-sebuah-chip)). Tujuannya: keputusan kapabilitas/biaya jadi **eksplisit & dapat diaudit** (prinsip A7), bukan implisit — dan memudahkan manusia memutuskan apakah perlu ganti model/effort atau mendelegasikan ke agen lebih murah.
 
 > ⚠️ Lineup model bergerak cepat. Tabel di bawah akurat **per pertengahan 2026**; nama/harga bisa berubah. Verifikasi picker terkini sebelum mengeksekusi.
 
