@@ -255,11 +255,11 @@ Selain biaya agen, ada biaya **tooling** yang awalnya terlewat dari analisis ini
 
 | Opsi verifikasi | Biaya | Portabilitas |
 | :--- | :--- | :--- |
-| **Dev-container lokal** (`Dockerfile.dev` → `make verify`) | **Rp 0** | Tinggi — **gate utama (default)** |
-| Self-hosted runner / Gitea Actions / target `make ci` | Rendah | Tinggi (cloud-exit) |
-| GitHub Actions hosted | Minutes (berbayar pada repo privat) | Rendah (lock-in) — **opsional & swappable** |
+| **Dev-container lokal** (`Dockerfile.dev` → `make verify`) | **Rp 0** | Tinggi — **gate satu-satunya** |
+| *(masa depan, jika perlu)* cloud-build portabel | Variabel | Tinggi — **bukan brand-specific** |
+| ~~GitHub Actions hosted~~ | ~~Minutes~~ | **Ditolak** — lock-in vendor (A2) |
 
-**Aturan**: jadikan **dev-container lokal sebagai gate utama** (gratis, portabel, tak bergantung akun); perlakukan hosted CI sebagai opsi yang bisa ditukar — **jangan** menjadikan CI ber-akun sebagai dependency *load-bearing* (insiden lock-billing membuktikan risikonya nyata). Catatan biaya cloud lain (K8s, lisensi SQL Server, dll.) diatur di [ADR-001](adr/ADR-001-cloud-native-vs-rejuvenation.md) & master plan, bukan di sini.
+**Keputusan (2026-06-14)**: **tidak ada hosted CI** — gate verifikasi satu-satunya adalah **`make verify` lokal** (portabel, tak bergantung akun/vendor). **GitHub Actions dibuang** sepenuhnya: hampir dipastikan tak akan dipakai, dan menyalahi A2 (cloud-exit / minimkan ketergantungan brand). Jika suatu hari hosted CI benar-benar diperlukan, kandidatnya **cloud-build yang portabel & brand-minimal** — tapi **belum masuk radar**. (Insiden lock-billing GitHub menegaskan risiko dependency ber-akun.) Biaya cloud lain (K8s, lisensi SQL Server) diatur di [ADR-001](adr/ADR-001-cloud-native-vs-rejuvenation.md) & master plan.
 
 ---
 

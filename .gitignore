@@ -6,11 +6,11 @@
 !docs/**
 !.gitignore
 
-# Track the cross-platform build foundation (real source) + CI workflows
+# Track the cross-platform build foundation (real source).
+# No hosted CI by design (cloud-exit / minimize vendor lock-in) — the build gate
+# is local `make verify`; nothing GitHub-specific is tracked.
 !ranserver-linux/
 !ranserver-linux/**
-!.github/
-!.github/**
 
 # ...but never build artifacts
 ranserver-linux/build/

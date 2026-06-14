@@ -33,7 +33,7 @@ do { db.GetCollect("col", var); } while (db.Next());
 - `db_smoke.cpp` — uji nyata (target `db_smoke`).
 
 ## Build & jalankan
-**CMake (dev container / CI):** target `ran_db` + `db_smoke` sudah ada di `CMakeLists.txt`; `make verify` membangunnya.
+**CMake (dev container, gate `make verify`):** target `ran_db` + `db_smoke` sudah ada di `CMakeLists.txt`; `make verify` membangunnya (tanpa hosted CI).
 
 **Sesi ini** (apt Docker Desktop sedang rusak → pakai image `odbc-spike` yang sudah punya `msodbcsql18`, compile via g++ langsung, terhadap `ranmssql` di network `rannet`):
 ```bash
