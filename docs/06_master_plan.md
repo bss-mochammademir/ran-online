@@ -22,6 +22,8 @@ Master plan ini memakai kerangka berlapis ala TOGAF. Tiap lapisan menjawab perta
 - [`01_architecture_overview.md`](01_architecture_overview.md) · [`02_server_components/`](02_server_components/) — arsitektur server warisan (as-is).
 - [`03_database_schema.md`](03_database_schema.md) · [`04_network_protocol.md`](04_network_protocol.md) — detail data & protokol as-is.
 - [`05_cloud_native_roadmap.md`](05_cloud_native_roadmap.md) — kelayakan porting + roadmap 3 fase.
+- [`07_ai_delivery_operating_model.md`](07_ai_delivery_operating_model.md) — model eksekusi tim AI-agent & rubrik dekomposisi "chip" (ringkas di [§8](#8-model-eksekusi-tim-ai-agent--dekomposisi-chip-pekerjaan)).
+- [`runbooks/db-restore.md`](runbooks/db-restore.md) — runbook Spike #0 (restore `.bak` + SP inventory).
 - [`adr/ADR-001`](adr/ADR-001-cloud-native-vs-rejuvenation.md) — **keputusan arsitektur inti**.
 - [`future_enhancements/`](future_enhancements/) — pasar terpusat, ledger setara perbankan, pencegahan fraud orang dalam.
 
@@ -148,6 +150,8 @@ graph LR
 | Game/C++ Engineer | Porting server, gameplay, combat, arena | SA/TA |
 | Economy Designer | Tuning indeks pasar, anti-inflasi, bond, settlement | EA/SA |
 | Compliance/Risk | POJK 11/2022, audit, data residency, AML, fraud | EA |
+
+> Catatan: peran di atas adalah **fungsi**, bukan harus orang berbeda. Eksekusinya dilakukan **tim AI-agent (Claude Code / Antigravity)** dengan manusia di peran arsitek/reviewer/pengambil keputusan — model & rubrik dekomposisi kerjanya di [§8](#8-model-eksekusi-tim-ai-agent--dekomposisi-chip-pekerjaan).
 
 ### 2.7 Pendorong Regulasi & Kepatuhan
 
@@ -425,11 +429,36 @@ Jawaban langsung untuk "apa yang perlu kita persiapkan selanjutnya" — dipriori
 
 ---
 
-## 8. Referensi Dokumen
+## 8. Model Eksekusi: Tim AI-Agent & Dekomposisi "Chip" Pekerjaan
+
+Tim pelaksana proyek ini adalah **AI agent (Claude Code / Antigravity AI)**; manusia berperan sebagai **arsitek, reviewer, pengambil keputusan** (turunan [A8](#23-prinsip-arsitektur-tambahan-untuk-delivery)). Proyek ini sekaligus **testbed cara kerja masa depan**. Panduan lengkap di [`07_ai_delivery_operating_model.md`](07_ai_delivery_operating_model.md); intinya:
+
+**Pilih mode eksekusi sesuai sifat kerja:**
+
+| Mode | Kapan | Paralel? |
+| :--- | :--- | :---: |
+| **Inline** | Kecil, dependen, butuh konteks sesi ini | tidak |
+| **Subagent** | Riset/pencarian luas atau mekanik seragam (fan-out) | ya |
+| **Chip** (background task → sesi+worktree) | Unit **mandiri + berbatas + terverifikasi** | ya |
+| **Scheduled/Loop** | Berulang (babysit CI, audit rutin) | n/a |
+
+**Rubrik "kapan dipecah jadi chip"** — pecah hanya bila unit: (1) *mandiri* (cold-startable tanpa konteks percakapan), (2) *berbatas* (lingkup in/out jelas), (3) *terverifikasi* (ada kriteria selesai objektif), (4) *aman diparalelkan* (tak menulis file yang sama). Jika belum, perhalus dulu spec-nya.
+
+**Aturan kunci proyek ini — serial dulu, baru fan-out:** selesaikan **shared layer secara serial** (abstraksi tipe + CMake, `CjADO`→`msodbcsql`, net→`boost::asio`) **sebelum** mem-fan-out porting 5 server sebagai chip paralel — kalau tidak, chip-chip itu akan menulis ulang abstraksi yang sama dan bertabrakan saat merge. Audit SP per-8-DB & abstraksi tipe repo-wide = contoh fan-out aman sejak awal.
+
+**Gate manusia non-negotiable** (agen mengusulkan, manusia memutuskan): paritas ekonomi/combat, keputusan ADR, kontrak skema/event, keamanan/compliance (POJK), rilis produksi. Selebihnya boleh review ringan/asinkron.
+
+**Tangga otonomi**: L0 supervised → L1 parallel-with-review (Fase 1–2) → L2 orchestrated/lead-agent (Fase 3) → L3 scheduled/continuous (Fase 4–5). Naik level = tambah otomatisasi, **bukan** kurangi gate kritis.
+
+---
+
+## 9. Referensi Dokumen
 
 - [`00_design_pillars.md`](00_design_pillars.md) — **north-star desain** (baca pertama).
 - [`01_architecture_overview.md`](01_architecture_overview.md) · [`02_server_components/`](02_server_components/) — arsitektur server as-is.
 - [`03_database_schema.md`](03_database_schema.md) · [`04_network_protocol.md`](04_network_protocol.md) — data & protokol as-is.
-- [`05_cloud_native_roadmap.md`](05_cloud_native_roadmap.md) — kelayakan & roadmap 3 fase *(perlu update — lihat §0/§6)*.
+- [`05_cloud_native_roadmap.md`](05_cloud_native_roadmap.md) — kelayakan & roadmap 3 fase (sudah direkonsiliasi dengan ADR-001).
+- [`07_ai_delivery_operating_model.md`](07_ai_delivery_operating_model.md) — model eksekusi tim AI-agent (detail §8).
+- [`runbooks/db-restore.md`](runbooks/db-restore.md) — runbook Spike #0.
 - [`adr/ADR-001-cloud-native-vs-rejuvenation.md`](adr/ADR-001-cloud-native-vs-rejuvenation.md) — keputusan arsitektur inti.
 - [`future_enhancements/central_market.md`](future_enhancements/central_market.md) · [`banking_grade_ledger.md`](future_enhancements/banking_grade_ledger.md) · [`insider_fraud_prevention.md`](future_enhancements/insider_fraud_prevention.md).
