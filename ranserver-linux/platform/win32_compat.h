@@ -26,6 +26,19 @@ typedef uint8_t  BYTE;
 typedef void*    HANDLE;     // real port: map to fd / custom abstraction
 typedef void*    LPVOID;
 
+// Wider integers + string-pointer types used across SigmaCore (evidence:
+// SigmaCore/Database/Ado/AdoClass.h — LONGLONG/USHORT/LPCTSTR appear there).
+// Verified to coexist with ODBC <sqltypes.h> on Linux.
+typedef int64_t      LONGLONG;
+typedef uint64_t     ULONGLONG;
+typedef uint16_t     USHORT;
+typedef const char*  LPCSTR;
+typedef char*        LPSTR;
+typedef const char*  LPCTSTR;   // ANSI build: TCHAR == char
+// NOTE — deferred (not simple typedefs, design decisions for the parameterized-
+// command port chip): `__int64`, `GUID`, and `_variant_t`. The COM `_variant_t`
+// will be replaced by typed accessors / a tagged value, not a typedef.
+
 #ifndef TRUE
 #define TRUE  1
 #endif

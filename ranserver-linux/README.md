@@ -10,6 +10,10 @@ shared-layer pieces validated by the spikes into one CMake project:
 | Network (IOCP → epoll) | `boost::asio` | [Spike #2](../docs/runbooks/asio-spike.md) |
 | DB connector (ADO/COM → ODBC) | `unixODBC` / `msodbcsql18` | [Spike #1](../docs/runbooks/msodbcsql-spike.md) |
 
+`db/` — `sc::db::OdbcDb`: the first real `SigmaCore` module ported — the core
+`CjADO` read path on ODBC (see [DB-layer port runbook](../docs/runbooks/db-layer-port.md)).
+Targets: `ran_db` (static lib) + `db_smoke`.
+
 ## Build & verify
 
 **Primary gate — local dev container** (free, portable, account-independent;
