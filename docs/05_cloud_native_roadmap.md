@@ -2,6 +2,8 @@
 
 Dokumen ini menyajikan penilaian kelayakan (*feasibility assessment*) dan rencana migrasi arsitektur Ran Online server dari lingkungan *on-premise Windows-centric* ke arsitektur **Cloud-Native cross-platform** yang aman, fleksibel, dan mematuhi regulasi ketat (seperti prinsip tata kelola IT perbankan OJK - POJK 11/2022).
 
+> ⚠️ **Keputusan database diperbarui oleh [ADR-001](adr/ADR-001-cloud-native-vs-rejuvenation.md).** Versi awal dokumen ini mengusulkan migrasi langsung ke PostgreSQL. Keputusan resmi sekarang adalah **Hybrid — Microsoft SQL Server berjalan di atas Linux container** (driver `msodbcsql`/ODBC menggantikan ADO COM), sehingga 1.000+ stored procedure T-SQL **tidak perlu ditulis ulang**. Migrasi ke **PostgreSQL = opsi Fase 2** (opsional) setelah server C++ stabil di Kubernetes. Bagian di bawah sudah disesuaikan; analisis PostgreSQL dipertahankan sebagai jalur Fase 2. Lihat juga [master plan](06_master_plan.md).
+
 ---
 
 ## Target Arsitektur Masa Depan (Target State)
@@ -19,7 +21,7 @@ graph TD
         CacheSvc[Cache Pods]
     end
     
-    CacheSvc -->|Read/Write| DB[(Managed PostgreSQL: RDS / Cloud SQL)]
+    CacheSvc -->|Read/Write via msodbcsql| DB[(MS SQL Server on Linux<br/>container / managed · ADR-001)]
     LoginSvc & AgentSvc & SessionSvc -.->|Service Discovery / Mesh| K8sCluster
 ```
 
@@ -34,13 +36,13 @@ Porting server Ran Online langsung dari C++ Windows ke Linux C++ adalah tugas ya
 * **Analisis**: Winsock IOCP (`CreateIoCompletionPort`) sangat berbeda secara arsitektur dengan Linux `epoll` atau macOS `kqueue`.
 * **Rekomendasi**: Mengintegrasikan **`boost::asio`** atau **`libuv`** ke dalam [NetServer.cpp](file:///Users/mochammad.emir/Library/Mobile%20Documents/com~apple%20CloudDocs/Code/ran-online/RanLogicServer/Server/NetServer.cpp) untuk mengabstraksi lapisan jaringan secara cross-platform tanpa menulis ulang logika perutean paket.
 
-### 2. Layer Database (ADO/OLE DB vs PostgreSQL)
-* **Kelayakan**: **Rendah ke Sedang** (Memerlukan upaya re-engineering terbesar)
-* **Analisis**: Dependensi COM OLE DB Windows di [AdoClass.cpp](file:///Users/mochammad.emir/Library/Mobile%20Documents/com~apple%20CloudDocs/Code/ran-online/SigmaCore/Database/Ado/AdoClass.cpp) tidak dapat dijalankan di Linux. Lebih dari 1.000 stored procedure T-SQL SQL Server harus dipindahkan.
-* **Rekomendasi**:
-  1. Ganti runtime OLE DB dengan driver C++ PostgreSQL native (**`libpqxx`**).
-  2. Gunakan alat konversi otomatis (seperti `pgloader`) untuk tabel skema dasar.
-  3. Konversi stored procedure kritis secara manual ke fungsi **PL/pgSQL**.
+### 2. Layer Database (ADO/OLE DB → ODBC, SQL Server dipertahankan)
+* **Kelayakan**: **Sedang** (dengan strategi Hybrid; risiko jauh lebih rendah dari rewrite DB)
+* **Analisis**: Yang tidak bisa jalan di Linux adalah **runtime akses datanya** (COM OLE DB/ADO di [AdoClass.cpp](file:///Users/mochammad.emir/Library/Mobile%20Documents/com~apple%20CloudDocs/Code/ran-online/SigmaCore/Database/Ado/AdoClass.cpp)) — **bukan** SQL Server-nya. Per [ADR-001](adr/ADR-001-cloud-native-vs-rejuvenation.md), engine SQL Server dipertahankan (berjalan di Linux container), sehingga stored procedure T-SQL tetap utuh. Jumlah SP sebenarnya divalidasi via [runbook restore `.bak`](runbooks/db-restore.md).
+* **Rekomendasi (Fase 1 — Hybrid)**:
+  1. Ganti runtime OLE DB/ADO dengan **Microsoft ODBC Driver for SQL Server (`msodbcsql`)** di belakang interface `CjADO` (perubahan terlokalisir, logika SP tak berubah).
+  2. Restore 8 `.bak` ke SQL Server on Linux & audit kompatibilitas — lihat [runbook](runbooks/db-restore.md).
+* **Opsi Fase 2 (opsional, hapus lisensi SQL Server)**: bila kelak ingin keluar dari lisensi, barulah migrasi ke PostgreSQL — `libpqxx` (driver C++), `pgloader` (skema/tabel), konversi SP kritis ke **PL/pgSQL**. *Bukan* prasyarat go-live.
 
 ### 3. Kompilasi & Compiler (MSVC vs GCC/Clang)
 * **Kelayakan**: **Tinggi**
@@ -53,11 +55,15 @@ Porting server Ran Online langsung dari C++ Windows ke Linux C++ adalah tugas ya
 
 ## Peta Jalan Migrasi (Roadmap)
 
+### Fase 0: Discovery DB (Spike #0 — prasyarat)
+* **Tujuan**: Membuktikan asumsi ADR-001 sebelum porting penuh.
+* **Langkah**: Restore 8 `.bak` ke SQL Server on Linux, hasilkan **SP Inventory** + **Linux Incompatibility Report** — lihat [runbook](runbooks/db-restore.md).
+
 ### Fase 1: Abstraksi OS & Database (Tahap Persiapan)
 * **Tujuan**: Membuat kode server dapat berjalan di Linux terlebih dahulu (Cross-platform compilation).
 * **Langkah**:
   - Konversi file solusi visual studio ke CMake.
-  - Implementasi layer database baru menggunakan driver PostgreSQL.
+  - Implementasi layer database baru menggunakan driver **`msodbcsql`/ODBC** ke SQL Server on Linux (interface `CjADO` dipertahankan).
   - Porting socket loop menggunakan `boost::asio`.
 
 ### Fase 2: Kontainerisasi (Docker & OCI Images)
