@@ -174,7 +174,82 @@ Mulai dari **L0/L1** (spike DB & porting), naik ke **L2** saat shared layer stab
 
 ---
 
-## 9. Referensi
+## 9. Literasi Model — Memilih Model & Effort per Chip
+
+Efisiensi biaya delivery (prinsip [pilar 4](00_design_pillars.md), "OpEx rendah = kemerdekaan etis") **menyentuh pemilihan model** untuk tiap chip. Prinsip inti: **cocokkan kapabilitas model dengan kompleksitas & risiko chip — bukan "selalu pakai yang termahal".** Karena setiap chip punya *gate* objektif (build/test/paritas, §7), model murah **aman** untuk chip low-risk; model mahal disimpan untuk chip kritis & ber-*gate manusia* (§6).
+
+> ⚠️ Lineup model bergerak cepat. Tabel di bawah akurat **per pertengahan 2026**; nama/harga bisa berubah. Verifikasi picker terkini sebelum mengeksekusi.
+
+### 9.1 Sumbu keputusan
+Dua sumbu menentukan pilihan: **(a) kompleksitas/risiko chip** dan **(b) effort/thinking level** (dalam-model). Naikkan *salah satu* sebelum naikkan keduanya — sering kali **model menengah + effort tinggi** mengalahkan **model atas + effort rendah** untuk tugas penalaran, dengan biaya lebih rendah.
+
+### 9.2 Claude Code (keluarga Claude)
+
+| Kelas chip | Model | Effort | Alasan |
+| :--- | :--- | :--- | :--- |
+| Riset/cari read-only, fan-out eksplorasi (subagent) | **Haiku 4.5** (`claude-haiku-4-5`) | `low` | Cepat & termurah ($1/$5 /1M); hasil = kesimpulan, mudah diverifikasi |
+| Porting mekanik seragam (tipe Win32→`uint32_t`, `.vcproj`→CMake), scaffolding, dokumentasi | **Sonnet 4.6** (`claude-sonnet-4-6`) | `medium` | Keseimbangan kecepatan/kecerdasan terbaik ($3/$15); volume tinggi |
+| Porting server inti, integrasi end-to-end, agentic panjang | **Opus 4.8** (`claude-opus-4-8`) | `high`/`xhigh` | Paling mampu long-horizon; `xhigh` = default coding Claude Code |
+| Chip **ber-gate kritis**: paritas ekonomi/combat, ledger, ADR, keamanan/compliance | **Opus 4.8** atau **Fable 5** (`claude-fable-5`) | `xhigh`/`max` | Korektnes > biaya; jangan pernah pakai model murah/effort rendah di sini |
+
+Effort Claude: `low < medium < high < xhigh < max`. Default Claude Code = `xhigh`; minimum `high` untuk kerja sensitif-kecerdasan; `low` untuk subagent/tugas sederhana.
+
+### 9.3 Antigravity (keluarga Gemini)
+
+| Kelas chip | Model | Thinking level | Alasan |
+| :--- | :--- | :--- | :--- |
+| Read/cari/mekanik ringan | **Gemini 3.x Flash-Lite / Flash** | `low`/`minimal` | Termurah; latensi rendah |
+| Implementasi terbatas, build/test, agentic langkah-sedikit | **Gemini 3.5 Flash** | `medium` | ~$0.50/$3.00 /1M; kuat untuk coding (SWE-bench ~78%); default Antigravity = `medium` |
+| Agentic kompleks, planning, long-horizon, high-safety | **Gemini 3.x Pro** (+ Deep Think) | `high` | Skor tertinggi, mode Deep Think, fitur agentic Pro-only |
+| Chip **ber-gate kritis** | **Gemini 3.x Pro** (Deep Think) | `high` | Korektnes > biaya |
+
+Picker Antigravity: Settings → Models, selektor `low/medium/high`. Gemini 3.5 Flash GA & bisa jadi model coding default.
+
+### 9.4 Aturan lintas-platform (yang penting)
+1. **Default ke tier menengah** (Sonnet 4.6 / Gemini Flash), bukan tier atas. Gate yang kuat (§7) membuat model murah aman untuk chip low-risk.
+2. **Eskalasi untuk gate kritis (§6)**: ekonomi/combat, ADR, kontrak skema/event, keamanan → tier atas + effort `high`+. **Tidak boleh** model murah/effort rendah di jalur kritis.
+3. **Fan-out murah, dalam mahal**: chip seragam low-risk (audit SP per-8-DB, abstraksi tipe repo-wide) = model murah + effort rendah × banyak paralel → throughput tinggi, biaya rendah. Chip kritis = model mahal, lebih sedikit, di-review manusia.
+4. **Beri spec penuh di awal** (lihat template chip-spec §3): Opus 4.8 & Gemini Pro keduanya bekerja jauh lebih baik untuk long-horizon bila seluruh spesifikasi diberikan dalam satu giliran pada effort tinggi.
+5. **Effort sebelum model**: untuk tugas penalaran, coba naikkan effort dulu sebelum lompat ke model lebih mahal.
+
+---
+
+## 10. Analisis Biaya Tim — dari Mandays ke Biaya Agen + Limit
+
+Pergeseran inti: dahulu biaya tim = **mandays** (gaji × hari; paralelisme dibatasi *headcount*). Sekarang = **biaya model/agen + limit langganan**; paralelisme dibatasi **kuota token per window**, bukan jumlah orang. **Limit berperilaku seperti "waktu istirahat"**: saat kuota habis, agen menunggu reset (window 5-jam / cap mingguan) — analog pekerja yang harus istirahat. Bedanya, "istirahat" agen bisa **dibeli hilang** dengan membayar (tier lebih tinggi / API pay-per-token).
+
+> ⚠️ Harga & limit di bawah **indikatif per pertengahan 2026** dan sering berubah; verifikasi sebelum menganggarkan.
+
+### 10.1 Insight utama: bottleneck pindah dari biaya → throughput
+Biaya token agen **sangat kecil** dibanding mandays. Contoh kasar: satu chip porting ≈ 2M input + 0,3M output token; di **Sonnet 4.6** ($3/$15 per 1M) dengan prompt-cache (read ~0,1×) ≈ **~$5/chip**. Lima server inti ≈ **~$25** — jauh di bawah satu *man-month*. → **Uang bukan lagi bottleneck; yang membatasi adalah throughput-under-limit (wall-clock).** Maka optimasi bergeser dari "minimalkan biaya" menjadi **"maksimalkan kerja per window sebelum istirahat"**.
+
+### 10.2 Dua model penagihan
+
+| Model | Biaya | "Istirahat" (limit) | Cocok untuk |
+| :--- | :--- | :--- | :--- |
+| **Langganan** (capped) | Tetap / bulan | **Ada** (window 5-jam + cap mingguan) | Kerja harian berkelanjutan; prediktabel |
+| **Pay-per-token** (API) | Variabel, sesuai pakai | **Tidak ada** (hanya batas RPM/TPM per menit) | Burst / fan-out paralel besar; deadline ketat |
+
+Langganan (indikatif, mid-2026):
+- **Claude Code**: Pro $20 (1×) · Max 5× $100 · Max 20× $200/bln. Limit dua-lapis: window 5-jam + cap mingguan (Anthropic tak publikasi kuota token persis — hanya multiplier).
+- **Antigravity (Google AI)**: Pro $20 (~5× request, refresh tiap 5 jam) · Ultra ~$250 (hapus cap mingguan). Sistem "compute-based".
+
+API pay-per-token (per 1M, indikatif): Claude **Haiku 4.5** $1/$5 · **Sonnet 4.6** $3/$15 · **Opus 4.8** $5/$25 · **Fable 5** $10/$50. Gemini **Flash** ~$0,5/$3 · **Pro** ~$2,5/$15. Penghemat: prompt caching (read ~0,1×), Batch API (−50%).
+
+### 10.3 "Limit = waktu istirahat": cara merencanakan timeline
+- **Jadwalkan chip berat di awal window** (kuota penuh); chip ringan/murah saat kuota menipis.
+- Saat kena cap, perlakukan sebagai **istirahat terjadwal**, bukan blocker — pakai jeda itu untuk **review manusia di gate (§6)** yang memang sequential.
+- **Hapus istirahat = bayar**: untuk burst paralel besar (fan-out porting 5 server / audit 8 DB), lompat ke **API pay-per-token** (tanpa cap window) — beli throughput hanya saat deadline menuntut.
+- **Tuas hemat utama = literasi model ([§9](#9-literasi-model--memilih-model--effort-per-chip))**: model murah + effort rendah meregangkan kuota window → lebih banyak chip selesai sebelum istirahat.
+
+### 10.4 Aturan praktis
+1. **Default**: 1–2 langganan tier atas (Max 20× / Ultra) untuk kerja harian — prediktabel; "rest" diterima → timeline lebih panjang tapi biaya rendah.
+2. **Akselerasi**: tambahkan **API pay-per-token** saat butuh paralelisme besar tanpa rest — biaya naik, wall-clock turun.
+3. **Konsisten dengan pilar 4**: total biaya bulanan tim AI-agent (langganan + sedikit API overflow) jauh di bawah mandays-equivalent satu engineer → menjaga **OpEx rendah = kemerdekaan etis**.
+
+---
+
+## 11. Referensi
 
 - [`06_master_plan.md`](06_master_plan.md) — master plan; prinsip A7/A8 & roadmap Fase 0–5.
 - [`runbooks/db-restore.md`](runbooks/db-restore.md) — contoh pekerjaan yang ideal di-fan-out (audit SP per-DB).
