@@ -377,7 +377,7 @@ Jawaban langsung untuk "apa yang perlu kita persiapkan selanjutnya" — dipriori
 3. **Spike teknis lanjutan (de-risk)** — *bergantung pada DB hasil Spike #0*:
    - ✅ **Spike #1 (selesai 2026-06-14)** — koneksi `msodbcsql` dari C++ Linux ke SQL Server on Linux: `connect → query → EXEC stored procedure` semua lulus, menggantikan jalur `CjADO`. Lihat [runbook](runbooks/msodbcsql-spike.md). *Kedua paruh ADR-001 (DB + aplikasi) kini tervalidasi empiris.*
    - ✅ **Spike #2 (selesai 2026-06-14)** — loop jaringan async (`io_context` + `async_accept`/`async_read`/`async_write`) jalan di Linux via `boost::asio`, pengganti IOCP. Lihat [runbook](runbooks/asio-spike.md). → **Dua abstraksi shared-layer Fase 1 (DB + jaringan) tervalidasi**; sisa = tipe Win32→`uint32_t` + CMake (mekanik). **Boleh fan-out porting 5 server.**
-4. **Build foundation** — skeleton **CMake** + dev container Linux (termasuk service SQL Server on Linux) + pipeline CI (compile + lint) untuk satu modul (mis. `SigmaCore`).
+4. **Build foundation** — 🟡 *scaffold selesai 2026-06-14*: skeleton **CMake** + shim tipe Win32 (`platform/win32_compat.h`) + dev container Linux + CI (`ubuntu-22.04`), dengan target gabungan `foundation_smoke` (tipe + `boost::asio` + ODBC dalam satu proyek) **compile/link/run hijau**. Lihat [runbook](runbooks/build-foundation.md). *Sisa (mekanik, per-modul chip)*: perluas shim + CMake-ify modul nyata mulai `SigmaCore` → lalu **fan-out porting 5 server**.
 5. **Landing zone Terraform** — VPC + cluster K8s + SQL Server on Linux di region Jakarta, minimal `dev`.
 
 ### Berikutnya (30–60 hari) — bukti berjalan
