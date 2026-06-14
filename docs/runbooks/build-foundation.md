@@ -10,12 +10,14 @@
 ```
 ranserver-linux/                 # akar build cross-platform baru
 ├── CMakeLists.txt               # top-level; titik fan-out per-server
+├── Makefile                     # `make verify` = gate utama (dev-container lokal)
 ├── platform/
 │   └── win32_compat.h           # shim tipe Win32 → std (mulai abstraksi tipe)
 ├── src/
 │   └── foundation_smoke.cpp     # menyatukan win32_compat + asio + ODBC
 ├── Dockerfile.dev               # dev container Linux (toolchain lengkap)
-└── .github/workflows/ci.yml     # CI: build di ubuntu-22.04 (verifier Linux kanonik)
+└── README.md                    # cara build & verifikasi
+.github/workflows/build-foundation.yml   # CI hosted OPSIONAL (swappable, di root repo)
 ```
 
 ## `CMakeLists.txt`
@@ -108,26 +110,22 @@ WORKDIR /work
 ```
 > Smoke sendiri hanya butuh `cmake g++ libboost-dev unixodbc-dev`; `msodbcsql18` diperlukan saat **connect** ke DB (lihat Spike #1).
 
-## `.github/workflows/ci.yml` — verifier Linux kanonik
-```yaml
-name: build-foundation
-on: [push, pull_request]
-jobs:
-  linux:
-    runs-on: ubuntu-22.04
-    steps:
-      - uses: actions/checkout@v4
-      - run: sudo apt-get update && sudo apt-get install -y cmake g++ libboost-dev libboost-system-dev unixodbc-dev
-      - run: cmake -B build -S . && cmake --build build
-      - run: ./build/foundation_smoke
+## Build & verifikasi — gate utama = **dev-container lokal**
+Gate utama bersifat **lokal** (gratis, portabel, tak bergantung akun; selaras pilar 4 + A2):
+```bash
+cd ranserver-linux
+make verify        # build clean-Linux + run di dalam dev container (gate)
+# atau native (butuh cmake/g++/libboost-dev/unixodbc-dev): make build && make run
 ```
 
-## Build & jalankan
-```bash
-# Linux dev container (kanonik):
-docker build -f Dockerfile.dev -t ran-dev . && docker run --rm -v "$PWD":/work ran-dev \
-  bash -lc "cmake -B build -S . && cmake --build build && ./build/foundation_smoke"
-# atau CI: otomatis di ubuntu-22.04 (workflow di atas)
+## CI hosted (opsional & swappable)
+GitHub Actions ([`.github/workflows/build-foundation.yml`](../../.github/workflows/build-foundation.yml)) disediakan sebagai **satu opsi runner hosted** — *bukan* gate load-bearing. Bisa diganti self-hosted runner / Gitea Actions / `make ci` tanpa kehilangan verifikasi. (Rasional biaya: [doc 07 §10.5](../07_ai_delivery_operating_model.md).) Inti workflow:
+```yaml
+runs-on: ubuntu-22.04
+steps:
+  - uses: actions/checkout@v4
+  - run: sudo apt-get update && sudo apt-get install -y cmake g++ libboost-dev libboost-system-dev unixodbc-dev
+  - run: cmake -B build -S ranserver-linux && cmake --build build && ./build/foundation_smoke
 ```
 
 ---
@@ -140,11 +138,11 @@ foundation_smoke OK:
   [3] unixODBC env alloc: ok
   -> unified cross-platform build foundation compiles, links & runs.
 ```
-> **Catatan transparansi**: build container Linux terblokir gangguan **apt/GPG BuildKit Docker Desktop** pada sesi ini (jam container terverifikasi benar, base image fresh, legacy builder pun gagal → masalah lingkungan, **bukan kode**). Verifikasi dilakukan via **CMake build di host (macOS)**; **CI `ubuntu-22.04`** adalah verifier Linux kanonik, dan API `boost::asio` + unixODBC sudah terbukti compile & run di Linux pada [Spike #1](msodbcsql-spike.md) & [#2](asio-spike.md).
+> **Catatan transparansi**: gate utama (`make verify`, dev-container Linux) terblokir gangguan **apt/GPG BuildKit Docker Desktop** pada sesi ini (jam container terverifikasi benar, base image fresh, legacy builder pun gagal → masalah lingkungan, **bukan kode**). Verifikasi dilakukan via **CMake build di host (macOS)**; gate dev-container lokal akan hijau begitu lingkungan Docker sehat. API `boost::asio` + unixODBC sendiri sudah terbukti compile & run di Linux pada [Spike #1](msodbcsql-spike.md) & [#2](asio-spike.md).
 
 ## Temuan porting (penting untuk tim)
 - **Bentrok tipe `DWORD`**: shim Win32 (`uint32_t`) vs `sqltypes.h` ODBC (`unsigned long`) → *"typedef redefinition with different types"*. **Aturan**: di TU yang pakai ODBC, **`#include <sql.h>` dulu**, lalu `win32_compat.h` (yang menunda WORD/DWORD/BYTE via `#ifndef __SQLTYPES_H`).
-- Host macOS punya bentrok tipe ekstra (`UINT`/`LONG`/`ULONG` dari header sistem/ODBC) yang **tidak** muncul di target Linux — alasan lain menjadikan Linux/CI sebagai verifier kanonik.
+- Host macOS punya bentrok tipe ekstra (`UINT`/`LONG`/`ULONG` dari header sistem/ODBC) yang **tidak** muncul di target Linux — alasan menjadikan **target Linux (gate `make verify`)** sebagai acuan, bukan host macOS.
 
 ## Kesimpulan & langkah berikut
 - **Fondasi build siap**: struktur CMake + shim tipe + dev container + CI, dengan target gabungan hijau. Ini **titik fan-out**.

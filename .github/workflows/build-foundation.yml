@@ -1,3 +1,8 @@
+# OPTIONAL / swappable hosted CI. The PRIMARY build gate is the local dev
+# container — `make verify` in ranserver-linux/ (free, portable, account-
+# independent; aligns with pilar 4 OpEx + A2 cloud-exit). This GitHub Actions
+# workflow is just one convenient hosted option and may be removed or replaced
+# (self-hosted runner / Gitea Actions / `make ci`) without losing the gate.
 name: build-foundation
 
 on:
