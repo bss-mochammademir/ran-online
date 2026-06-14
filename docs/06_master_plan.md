@@ -375,8 +375,8 @@ Jawaban langsung untuk "apa yang perlu kita persiapkan selanjutnya" — dipriori
    - **Gate**: hasil Spike #0 menentukan ADR-001 di-*Accept* apa adanya atau perlu penyesuaian. Sekaligus tentukan keluarga DB kanonik (`Ran*` vs `WB*`) dan periksa `RanShop`/`RanMobileInterface` (relevan cash shop + mobile).
 2. **Naikkan [ADR-001](adr/ADR-001-cloud-native-vs-rejuvenation.md) dari *Proposed* → *Accepted*** (digerbangi Spike #0) dan **update [`05`](05_cloud_native_roadmap.md)** agar konsisten (Hybrid/SQL Server on Linux; PostgreSQL = Fase 2 opsional).
 3. **Spike teknis lanjutan (de-risk)** — *bergantung pada DB hasil Spike #0*:
-   - Koneksi `msodbcsql` dari C++ Linux ke SQL Server on Linux menggantikan satu panggilan `CjADO`.
-   - Port `NetServer.cpp` ke `boost::asio` untuk satu loop koneksi sederhana.
+   - ✅ **Spike #1 (selesai 2026-06-14)** — koneksi `msodbcsql` dari C++ Linux ke SQL Server on Linux: `connect → query → EXEC stored procedure` semua lulus, menggantikan jalur `CjADO`. Lihat [runbook](runbooks/msodbcsql-spike.md). *Kedua paruh ADR-001 (DB + aplikasi) kini tervalidasi empiris.*
+   - Port `NetServer.cpp` ke `boost::asio` untuk satu loop koneksi sederhana *(spike berikutnya)*.
 4. **Build foundation** — skeleton **CMake** + dev container Linux (termasuk service SQL Server on Linux) + pipeline CI (compile + lint) untuk satu modul (mis. `SigmaCore`).
 5. **Landing zone Terraform** — VPC + cluster K8s + SQL Server on Linux di region Jakarta, minimal `dev`.
 
