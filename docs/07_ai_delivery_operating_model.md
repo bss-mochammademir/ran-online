@@ -174,7 +174,47 @@ Mulai dari **L0/L1** (spike DB & porting), naik ke **L2** saat shared layer stab
 
 ---
 
-## 9. Referensi
+## 9. Literasi Model — Memilih Model & Effort per Chip
+
+Efisiensi biaya delivery (prinsip [pilar 4](00_design_pillars.md), "OpEx rendah = kemerdekaan etis") **menyentuh pemilihan model** untuk tiap chip. Prinsip inti: **cocokkan kapabilitas model dengan kompleksitas & risiko chip — bukan "selalu pakai yang termahal".** Karena setiap chip punya *gate* objektif (build/test/paritas, §7), model murah **aman** untuk chip low-risk; model mahal disimpan untuk chip kritis & ber-*gate manusia* (§6).
+
+> ⚠️ Lineup model bergerak cepat. Tabel di bawah akurat **per pertengahan 2026**; nama/harga bisa berubah. Verifikasi picker terkini sebelum mengeksekusi.
+
+### 9.1 Sumbu keputusan
+Dua sumbu menentukan pilihan: **(a) kompleksitas/risiko chip** dan **(b) effort/thinking level** (dalam-model). Naikkan *salah satu* sebelum naikkan keduanya — sering kali **model menengah + effort tinggi** mengalahkan **model atas + effort rendah** untuk tugas penalaran, dengan biaya lebih rendah.
+
+### 9.2 Claude Code (keluarga Claude)
+
+| Kelas chip | Model | Effort | Alasan |
+| :--- | :--- | :--- | :--- |
+| Riset/cari read-only, fan-out eksplorasi (subagent) | **Haiku 4.5** (`claude-haiku-4-5`) | `low` | Cepat & termurah ($1/$5 /1M); hasil = kesimpulan, mudah diverifikasi |
+| Porting mekanik seragam (tipe Win32→`uint32_t`, `.vcproj`→CMake), scaffolding, dokumentasi | **Sonnet 4.6** (`claude-sonnet-4-6`) | `medium` | Keseimbangan kecepatan/kecerdasan terbaik ($3/$15); volume tinggi |
+| Porting server inti, integrasi end-to-end, agentic panjang | **Opus 4.8** (`claude-opus-4-8`) | `high`/`xhigh` | Paling mampu long-horizon; `xhigh` = default coding Claude Code |
+| Chip **ber-gate kritis**: paritas ekonomi/combat, ledger, ADR, keamanan/compliance | **Opus 4.8** atau **Fable 5** (`claude-fable-5`) | `xhigh`/`max` | Korektnes > biaya; jangan pernah pakai model murah/effort rendah di sini |
+
+Effort Claude: `low < medium < high < xhigh < max`. Default Claude Code = `xhigh`; minimum `high` untuk kerja sensitif-kecerdasan; `low` untuk subagent/tugas sederhana.
+
+### 9.3 Antigravity (keluarga Gemini)
+
+| Kelas chip | Model | Thinking level | Alasan |
+| :--- | :--- | :--- | :--- |
+| Read/cari/mekanik ringan | **Gemini 3.x Flash-Lite / Flash** | `low`/`minimal` | Termurah; latensi rendah |
+| Implementasi terbatas, build/test, agentic langkah-sedikit | **Gemini 3.5 Flash** | `medium` | ~$0.50/$3.00 /1M; kuat untuk coding (SWE-bench ~78%); default Antigravity = `medium` |
+| Agentic kompleks, planning, long-horizon, high-safety | **Gemini 3.x Pro** (+ Deep Think) | `high` | Skor tertinggi, mode Deep Think, fitur agentic Pro-only |
+| Chip **ber-gate kritis** | **Gemini 3.x Pro** (Deep Think) | `high` | Korektnes > biaya |
+
+Picker Antigravity: Settings → Models, selektor `low/medium/high`. Gemini 3.5 Flash GA & bisa jadi model coding default.
+
+### 9.4 Aturan lintas-platform (yang penting)
+1. **Default ke tier menengah** (Sonnet 4.6 / Gemini Flash), bukan tier atas. Gate yang kuat (§7) membuat model murah aman untuk chip low-risk.
+2. **Eskalasi untuk gate kritis (§6)**: ekonomi/combat, ADR, kontrak skema/event, keamanan → tier atas + effort `high`+. **Tidak boleh** model murah/effort rendah di jalur kritis.
+3. **Fan-out murah, dalam mahal**: chip seragam low-risk (audit SP per-8-DB, abstraksi tipe repo-wide) = model murah + effort rendah × banyak paralel → throughput tinggi, biaya rendah. Chip kritis = model mahal, lebih sedikit, di-review manusia.
+4. **Beri spec penuh di awal** (lihat template chip-spec §3): Opus 4.8 & Gemini Pro keduanya bekerja jauh lebih baik untuk long-horizon bila seluruh spesifikasi diberikan dalam satu giliran pada effort tinggi.
+5. **Effort sebelum model**: untuk tugas penalaran, coba naikkan effort dulu sebelum lompat ke model lebih mahal.
+
+---
+
+## 10. Referensi
 
 - [`06_master_plan.md`](06_master_plan.md) — master plan; prinsip A7/A8 & roadmap Fase 0–5.
 - [`runbooks/db-restore.md`](runbooks/db-restore.md) — contoh pekerjaan yang ideal di-fan-out (audit SP per-DB).
