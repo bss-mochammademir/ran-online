@@ -17,7 +17,7 @@ ranserver-linux/                 # akar build cross-platform baru
 │   └── foundation_smoke.cpp     # menyatukan win32_compat + asio + ODBC
 ├── Dockerfile.dev               # dev container Linux (toolchain lengkap)
 └── README.md                    # cara build & verifikasi
-.github/workflows/build-foundation.yml   # CI hosted OPSIONAL (swappable, di root repo)
+(tidak ada hosted CI — gate = `make verify` lokal; lihat §"Tidak ada hosted CI")
 ```
 
 ## `CMakeLists.txt`
@@ -118,15 +118,8 @@ make verify        # build clean-Linux + run di dalam dev container (gate)
 # atau native (butuh cmake/g++/libboost-dev/unixodbc-dev): make build && make run
 ```
 
-## CI hosted (opsional & swappable)
-GitHub Actions ([`.github/workflows/build-foundation.yml`](../../.github/workflows/build-foundation.yml)) disediakan sebagai **satu opsi runner hosted** — *bukan* gate load-bearing. Bisa diganti self-hosted runner / Gitea Actions / `make ci` tanpa kehilangan verifikasi. (Rasional biaya: [doc 07 §10.5](../07_ai_delivery_operating_model.md).) Inti workflow:
-```yaml
-runs-on: ubuntu-22.04
-steps:
-  - uses: actions/checkout@v4
-  - run: sudo apt-get update && sudo apt-get install -y cmake g++ libboost-dev libboost-system-dev unixodbc-dev
-  - run: cmake -B build -S ranserver-linux && cmake --build build && ./build/foundation_smoke
-```
+## Tidak ada hosted CI (by design)
+Verifikasi **hanya** lewat `make verify` lokal di atas. **Tidak ada GitHub Actions** atau CI ber-brand lain — menyalahi A2 (cloud-exit / minimkan ketergantungan vendor), dan hampir dipastikan tak dipakai. Jika kelak benar-benar perlu hosted, kandidatnya **cloud-build portabel & brand-minimal**, tapi **belum di radar**. Rasional: [doc 07 §10.5](../07_ai_delivery_operating_model.md).
 
 ---
 
@@ -147,7 +140,7 @@ foundation_smoke OK:
 ## Kesimpulan & langkah berikut
 - **Fondasi build siap**: struktur CMake + shim tipe + dev container + CI, dengan target gabungan hijau. Ini **titik fan-out**.
 - **Sisa Fase 1 (mekanik, per-modul chip)**: (a) perluas `win32_compat.h` mengikuti tipe yang dipakai tiap modul; (b) CMake-ify modul nyata mulai `SigmaCore` (tempat `AdoClass`/`CjADO` + tipe Win32 hidup); (c) lalu **fan-out porting 5 server** sebagai chip paralel.
-- **Keputusan repo (diputuskan 2026-06-14)**: scaffold ini kode nyata pertama di luar `docs/`. `.gitignore` sudah diubah untuk **melacak `ranserver-linux/` + `.github/`** (workflow CI). Sumber kini hidup di [`ranserver-linux/`](../../ranserver-linux/), bukan hanya inline di runbook ini.
+- **Keputusan repo (diputuskan 2026-06-14)**: scaffold ini kode nyata pertama di luar `docs/`. `.gitignore` melacak **`ranserver-linux/`** (sumber kini hidup di [`ranserver-linux/`](../../ranserver-linux/), bukan hanya inline). **Tanpa hosted CI** — `.github/` tidak dilacak; gate = `make verify` lokal (A2 cloud-exit).
 
 ### Bersih-bersih (opsional)
 ```bash

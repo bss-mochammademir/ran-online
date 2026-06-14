@@ -1,7 +1,9 @@
-# Primary build gate for the cross-platform foundation.
+# THE build gate for the cross-platform foundation.
 # `make verify` runs a clean-Linux build inside the dev container — free,
-# portable, account-independent (pilar 4 OpEx + A2 cloud-exit). Hosted CI
-# (GitHub Actions) is optional/swappable; this is the canonical gate.
+# portable, account-independent (pilar 4 OpEx + A2 cloud-exit). There is NO
+# hosted CI by design (minimize vendor lock-in); this local gate is the only one.
+# If hosted CI is ever needed it would be a portable cloud-build — not on the
+# radar, and never brand-specific (no GitHub Actions).
 
 .PHONY: verify build run clean
 
