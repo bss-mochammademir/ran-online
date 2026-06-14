@@ -214,7 +214,42 @@ Picker Antigravity: Settings → Models, selektor `low/medium/high`. Gemini 3.5 
 
 ---
 
-## 10. Referensi
+## 10. Analisis Biaya Tim — dari Mandays ke Biaya Agen + Limit
+
+Pergeseran inti: dahulu biaya tim = **mandays** (gaji × hari; paralelisme dibatasi *headcount*). Sekarang = **biaya model/agen + limit langganan**; paralelisme dibatasi **kuota token per window**, bukan jumlah orang. **Limit berperilaku seperti "waktu istirahat"**: saat kuota habis, agen menunggu reset (window 5-jam / cap mingguan) — analog pekerja yang harus istirahat. Bedanya, "istirahat" agen bisa **dibeli hilang** dengan membayar (tier lebih tinggi / API pay-per-token).
+
+> ⚠️ Harga & limit di bawah **indikatif per pertengahan 2026** dan sering berubah; verifikasi sebelum menganggarkan.
+
+### 10.1 Insight utama: bottleneck pindah dari biaya → throughput
+Biaya token agen **sangat kecil** dibanding mandays. Contoh kasar: satu chip porting ≈ 2M input + 0,3M output token; di **Sonnet 4.6** ($3/$15 per 1M) dengan prompt-cache (read ~0,1×) ≈ **~$5/chip**. Lima server inti ≈ **~$25** — jauh di bawah satu *man-month*. → **Uang bukan lagi bottleneck; yang membatasi adalah throughput-under-limit (wall-clock).** Maka optimasi bergeser dari "minimalkan biaya" menjadi **"maksimalkan kerja per window sebelum istirahat"**.
+
+### 10.2 Dua model penagihan
+
+| Model | Biaya | "Istirahat" (limit) | Cocok untuk |
+| :--- | :--- | :--- | :--- |
+| **Langganan** (capped) | Tetap / bulan | **Ada** (window 5-jam + cap mingguan) | Kerja harian berkelanjutan; prediktabel |
+| **Pay-per-token** (API) | Variabel, sesuai pakai | **Tidak ada** (hanya batas RPM/TPM per menit) | Burst / fan-out paralel besar; deadline ketat |
+
+Langganan (indikatif, mid-2026):
+- **Claude Code**: Pro $20 (1×) · Max 5× $100 · Max 20× $200/bln. Limit dua-lapis: window 5-jam + cap mingguan (Anthropic tak publikasi kuota token persis — hanya multiplier).
+- **Antigravity (Google AI)**: Pro $20 (~5× request, refresh tiap 5 jam) · Ultra ~$250 (hapus cap mingguan). Sistem "compute-based".
+
+API pay-per-token (per 1M, indikatif): Claude **Haiku 4.5** $1/$5 · **Sonnet 4.6** $3/$15 · **Opus 4.8** $5/$25 · **Fable 5** $10/$50. Gemini **Flash** ~$0,5/$3 · **Pro** ~$2,5/$15. Penghemat: prompt caching (read ~0,1×), Batch API (−50%).
+
+### 10.3 "Limit = waktu istirahat": cara merencanakan timeline
+- **Jadwalkan chip berat di awal window** (kuota penuh); chip ringan/murah saat kuota menipis.
+- Saat kena cap, perlakukan sebagai **istirahat terjadwal**, bukan blocker — pakai jeda itu untuk **review manusia di gate (§6)** yang memang sequential.
+- **Hapus istirahat = bayar**: untuk burst paralel besar (fan-out porting 5 server / audit 8 DB), lompat ke **API pay-per-token** (tanpa cap window) — beli throughput hanya saat deadline menuntut.
+- **Tuas hemat utama = literasi model ([§9](#9-literasi-model--memilih-model--effort-per-chip))**: model murah + effort rendah meregangkan kuota window → lebih banyak chip selesai sebelum istirahat.
+
+### 10.4 Aturan praktis
+1. **Default**: 1–2 langganan tier atas (Max 20× / Ultra) untuk kerja harian — prediktabel; "rest" diterima → timeline lebih panjang tapi biaya rendah.
+2. **Akselerasi**: tambahkan **API pay-per-token** saat butuh paralelisme besar tanpa rest — biaya naik, wall-clock turun.
+3. **Konsisten dengan pilar 4**: total biaya bulanan tim AI-agent (langganan + sedikit API overflow) jauh di bawah mandays-equivalent satu engineer → menjaga **OpEx rendah = kemerdekaan etis**.
+
+---
+
+## 11. Referensi
 
 - [`06_master_plan.md`](06_master_plan.md) — master plan; prinsip A7/A8 & roadmap Fase 0–5.
 - [`runbooks/db-restore.md`](runbooks/db-restore.md) — contoh pekerjaan yang ideal di-fan-out (audit SP per-DB).

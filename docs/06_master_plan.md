@@ -452,6 +452,8 @@ Tim pelaksana proyek ini adalah **AI agent (Claude Code / Antigravity AI)**; man
 
 **Literasi model** (efisiensi biaya): cocokkan model dengan kompleksitas/risiko chip — default tier menengah (Claude **Sonnet 4.6** / **Gemini Flash**, effort `medium`) untuk porting mekanik; eskalasi ke tier atas (**Opus 4.8**/**Fable 5** atau **Gemini Pro**, effort `high`+) hanya untuk chip ber-gate kritis (ekonomi/combat/ADR/keamanan); model murah + effort rendah untuk fan-out read-only. Detail tabel di [`07_…` §9](07_ai_delivery_operating_model.md#9-literasi-model--memilih-model--effort-per-chip).
 
+**Biaya tim** (dari mandays → biaya agen + limit): biaya token agen jauh di bawah mandays, jadi **bottleneck pindah dari uang ke throughput-under-limit** — limit langganan (window 5-jam / cap mingguan) berperilaku seperti "waktu istirahat" yang hanya bisa dihapus dengan membayar (API pay-per-token tanpa cap, untuk burst paralel). Default: langganan tier atas untuk kerja harian; API pay-per-token saat butuh akselerasi tanpa rest. Detail di [`07_…` §10](07_ai_delivery_operating_model.md#10-analisis-biaya-tim--dari-mandays-ke-biaya-agen--limit).
+
 ---
 
 ## 9. Referensi Dokumen
