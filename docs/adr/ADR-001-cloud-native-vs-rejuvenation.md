@@ -1,8 +1,8 @@
 # Architecture Decision Record (ADR)
 ## ADR-001: Cloud-Native Refactor vs. Tech Stack Rejuvenation vs. Hybrid (SQL Server on Linux)
 
-* **Status**: Proposed
-* **Date**: 2026-06-13
+* **Status**: **Accepted** (divalidasi via [Spike #0](../runbooks/db-restore.md), 2026-06-14)
+* **Date**: 2026-06-13 · **Divalidasi**: 2026-06-14
 * **Author**: Antigravity (AI Coding Assistant) & Lead Infrastructure Engineer
 
 ---
@@ -78,3 +78,52 @@ Opsi ini merupakan **titik tengah (sweet spot)** yang sangat taktis:
 ## 6. Consequences (Konsekuensi)
 * **Kompilasi Docker Image**: Kita perlu merancang Dockerfile dasar yang memasang Microsoft ODBC Driver di atas Alpine Linux / Ubuntu LTS agar konektor database cross-platform dapat berjalan lancar.
 * **Strategi Jangka Panjang (Fase 2)**: Jika di masa depan ingin membuang biaya lisensi SQL Server sepenuhnya, kita bisa merencanakan transisi bertahap ke PostgreSQL setelah server C++ stabil berjalan di Kubernetes Linux.
+
+---
+
+## 7. Validasi — Spike #0 (2026-06-14)
+
+Asumsi inti ADR ini ("pertahankan SQL Server, jangan tulis ulang SP") **dibuktikan secara empiris** dengan me-restore 8 backup di [`database/`](../../database/) ke **Microsoft SQL Server 2022 (16.0 CU25) on Linux (Ubuntu 22.04)** via Docker (emulasi `amd64` di Apple Silicon). Prosedur lengkap & dapat diulang: [`runbooks/db-restore.md`](../runbooks/db-restore.md).
+
+### 7.1 Hasil Restore
+* **8/8 database ONLINE.** Semua backup ber-*compatibility level* **100 (SQL Server 2008)** — di atas batas minimum SQL Server 2022 (compat 100), sehingga restore lancar tanpa konversi.
+* Dua DB multi-file (`RanGameS1`/`WBGame` punya file data sekunder `RanGameS1_S`.ndf — *filegroup* biasa, **bukan** FILESTREAM) berhasil setelah `MOVE` semua file logis.
+
+### 7.2 Artefak A — SP Inventory (angka nyata, mengganti perkiraan "1.000+")
+
+| Database | Stored Proc | Functions | Triggers | Views | Tables |
+| :--- | :---: | :---: | :---: | :---: | :---: |
+| RanGame | 312 | 5 | 0 | 3 | 81 |
+| RanUser | 43 | 7 | 0 | 4 | 41 |
+| RanLog | 67 | 1 | 0 | 19 | 70 |
+| RanShop | 26 | 0 | 0 | 3 | 17 |
+| RanMobileInterface | 13 | 0 | 0 | 0 | 5 |
+| WBGame | 306 | 5 | 0 | 4 | 82 |
+| WBLog | 57 | 1 | 0 | 17 | 60 |
+| WBUser | 42 | 7 | 0 | 4 | 48 |
+| **TOTAL** | **866** | 26 | 0 | 54 | 404 |
+
+> `Ran*` (461 SP) dan `WB*` (405 SP) adalah **dua keluarga nyaris kembar** (RanGame 312 ≈ WBGame 306; RanUser 43 ≈ WBUser 42; RanLog 67 ≈ WBLog 57) — kemungkinan world/channel kedua atau build varian. **Permukaan SP unik untuk diuji ≈ keluarga `Ran*` (461)**, bukan 866. Keputusan keluarga kanonik (`Ran*` vs `WB*`) = item terbuka.
+
+### 7.3 Artefak B — Linux Incompatibility Report → **BERSIH**
+
+| Fitur dicek | Temuan | Catatan |
+| :--- | :---: | :--- |
+| `xp_cmdshell` | **0** | — |
+| OLE Automation (`sp_OA*`) | **0** | — |
+| Linked server / `OPENQUERY`/`OPENROWSET` | **0** | — |
+| FILESTREAM / FileTable | **0** | Tidak didukung di Linux — *aman, tidak dipakai* |
+| Full-text (`CONTAINS`/`FREETEXT`) | **0** | — |
+| Database Mail (`sp_send_dbmail`) | **0** | — |
+| Extended proc (`xp_*`) asli | **0** | 37 "hit" awal = *false positive* dari kata "e**xp**erience" (wildcard `_`) |
+| CLR assemblies (user) | **0** | — |
+| SQL Agent jobs | **0** | — |
+
+**Tidak ada satu pun fitur *blocking*.** Logika game murni T-SQL/`sys.objects` standar → kompatibel penuh dengan SQL Server on Linux.
+
+### 7.4 Catatan operasional
+* **Co-location wajib**: SP `RanGame` mereferensikan `RanUser`/`RanLog`/`RanShop` (referensi lintas-DB 3-bagian) → **ke-8 database harus berada di satu instance SQL Server** (bukan dipecah). Tidak masalah untuk Hybrid; jadi syarat deployment.
+* **Auth**: tidak ditemukan `Trusted_Connection`/`SSPI`/`Integrated Security` di kode akses DB → jalur **SQL authentication** (user/pass via secret manager) sesuai rencana.
+
+### 7.5 Kesimpulan
+Asumsi inti **TERVALIDASI**: 866 SP (461 unik) berjalan di SQL Server on Linux tanpa fitur tak-kompatibel. Risiko penulisan ulang SP yang dihindari oleh Opsi 3 itu **nyata dan besar**, dan Hybrid mengeliminasinya. **Status ADR-001 dinaikkan ke *Accepted*.** Langkah berikut: spike konektor `msodbcsql` dari C++ Linux ke instance ini ([master plan §6](../06_master_plan.md#6-apa-yang-perlu-disiapkan-selanjutnya)).

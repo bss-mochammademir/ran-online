@@ -6,6 +6,8 @@
 
 Runbook ini berjalan **100% lokal** (Docker), tanpa cloud.
 
+> ✅ **Sudah dieksekusi 2026-06-14** — hasil (8/8 DB ONLINE, **866 SP**, incompatibility report **bersih**) tercatat di [ADR-001 §7](../adr/ADR-001-cloud-native-vs-rejuvenation.md#7-validasi--spike-0-2026-06-14).
+
 ---
 
 ## Prasyarat
