@@ -5,3 +5,13 @@
 !docs/
 !docs/**
 !.gitignore
+
+# Track the cross-platform build foundation (real source) + CI workflows
+!ranserver-linux/
+!ranserver-linux/**
+!.github/
+!.github/**
+
+# ...but never build artifacts
+ranserver-linux/build/
+ranserver-linux/build-host/

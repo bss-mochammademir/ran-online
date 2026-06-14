@@ -1,0 +1,32 @@
+name: build-foundation
+
+on:
+  push:
+    paths:
+      - "ranserver-linux/**"
+      - ".github/workflows/build-foundation.yml"
+  pull_request:
+    paths:
+      - "ranserver-linux/**"
+      - ".github/workflows/build-foundation.yml"
+  workflow_dispatch:
+
+jobs:
+  linux:
+    runs-on: ubuntu-22.04
+    defaults:
+      run:
+        working-directory: ranserver-linux
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake g++ make libboost-dev libboost-system-dev unixodbc-dev
+      - name: Configure
+        run: cmake -B build -S .
+      - name: Build
+        run: cmake --build build
+      - name: Smoke
+        run: ./build/foundation_smoke

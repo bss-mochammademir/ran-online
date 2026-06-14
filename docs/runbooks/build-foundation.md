@@ -149,7 +149,7 @@ foundation_smoke OK:
 ## Kesimpulan & langkah berikut
 - **Fondasi build siap**: struktur CMake + shim tipe + dev container + CI, dengan target gabungan hijau. Ini **titik fan-out**.
 - **Sisa Fase 1 (mekanik, per-modul chip)**: (a) perluas `win32_compat.h` mengikuti tipe yang dipakai tiap modul; (b) CMake-ify modul nyata mulai `SigmaCore` (tempat `AdoClass`/`CjADO` + tipe Win32 hidup); (c) lalu **fan-out porting 5 server** sebagai chip paralel.
-- **Keputusan repo**: scaffold ini kode nyata pertama (di luar `docs/`, saat ini gitignored). Pertimbangkan mulai melacak `ranserver-linux/` di git (ubah `.gitignore`) ketika porting nyata dimulai.
+- **Keputusan repo (diputuskan 2026-06-14)**: scaffold ini kode nyata pertama di luar `docs/`. `.gitignore` sudah diubah untuk **melacak `ranserver-linux/` + `.github/`** (workflow CI). Sumber kini hidup di [`ranserver-linux/`](../../ranserver-linux/), bukan hanya inline di runbook ini.
 
 ### Bersih-bersih (opsional)
 ```bash
