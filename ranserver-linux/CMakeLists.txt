@@ -24,5 +24,9 @@ target_link_libraries(ran_db PUBLIC ${ODBC_LIB})
 add_executable(db_smoke db/db_smoke.cpp)
 target_link_libraries(db_smoke PRIVATE ran_db)
 
+# Write-path smoke: parameterized stored procedures (CjADO Append*Param port).
+add_executable(db_param_smoke db/db_param_smoke.cpp)
+target_link_libraries(db_param_smoke PRIVATE ran_db)
+
 # Fan-out point: add per-server targets (login/agent/field/session/cache) here,
 # each reusing platform/ + the shared net/db layers.
