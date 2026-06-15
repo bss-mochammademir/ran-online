@@ -28,5 +28,21 @@ target_link_libraries(db_smoke PRIVATE ran_db)
 add_executable(db_param_smoke db/db_param_smoke.cpp)
 target_link_libraries(db_param_smoke PRIVATE ran_db)
 
-# Fan-out point: add per-server targets (login/agent/field/session/cache) here,
-# each reusing platform/ + the shared net/db layers.
+# Network layer — cross-platform server base, IOCP -> boost::asio port of the
+# shared Win32 NetServer (RanLogicServer/Server/NetServer). boost::asio is
+# header-only; only Threads is linked.
+add_library(ran_net STATIC net/net_server.cpp)
+target_include_directories(ran_net PUBLIC ${CMAKE_SOURCE_DIR}/net ${Boost_INCLUDE_DIRS})
+target_link_libraries(ran_net PUBLIC Threads::Threads)
+
+# ---- Fan-out: per-server targets, each riding the shared net/db layers ----------
+# AuthServer (first fan-out server): Linux skeleton of CAuthServer on ran_net + ran_db.
+add_library(authserver_lib STATIC servers/authserver/auth_server.cpp)
+target_include_directories(authserver_lib PUBLIC ${CMAKE_SOURCE_DIR}/servers/authserver)
+target_link_libraries(authserver_lib PUBLIC ran_net ran_db)
+
+add_executable(authserver servers/authserver/main.cpp)
+target_link_libraries(authserver PRIVATE authserver_lib)
+
+add_executable(authserver_smoke servers/authserver/authserver_smoke.cpp)
+target_link_libraries(authserver_smoke PRIVATE authserver_lib)
