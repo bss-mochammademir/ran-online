@@ -93,6 +93,27 @@ graph TD
 
 ---
 
+## 3a. ⭐ G-Logic (`glogic`) — "jiwa" rules, di luar DB (blocker FieldServer)
+
+Temuan kunci: **data desain game statis TIDAK ada di SQL DB** — ia hidup di **G-Logic**, di-pack jadi container `.rcc` di dalam folder `data/` server.
+
+- **Kode**: [`enginelib/G-Logic/GLogic.{h,cpp}`](file:///Users/mochammad.emir/Library/Mobile%20Documents/com~apple%20CloudDocs/Code/ran-online/enginelib/G-Logic/GLogic.cpp) (sistem + `GetServerPath()`), [`RanLogic/GLogicFile.{h,cpp}`](file:///Users/mochammad.emir/Library/Mobile%20Documents/com~apple%20CloudDocs/Code/ran-online/RanLogic/GLogicFile.cpp) (daftar file rule), reader `CUnzipper::LOADFILE_RCC()` (`enginelib/Common/SerialMemoryEngine.cpp`).
+- **`.rcc` = container ZIP** (bungkusan generik, di-load via reader custom + obfuscation). Keluarga file: `Animation/Effect/EffectChar/Map/SkinObject.rcc` (aset 3D client) + **`GLogicServer.rcc`** (rules sisi-server) = `GetServerPath() + "GLogicServer.rcc"`. Engine punya flag `bGLOGIC_ZIPFILE` vs **`bGLOGIC_PACKFILE`** → bisa load dari **file lepas** (mode dev), tak harus dari `.rcc`. *Catatan operasional: private server lazim membungkus ulang `.rcc` dengan ekstensi lain — formatnya bebas.*
+- **Isi rules** (dari `GLogicFile`): Item, DefaultCharClass, ProductRecipe, ColorTable, Country, Post, UseFeatures, + **script server**: Attendance, CaptureTheField, BuffManager, MatchSystem, GroupChat.
+
+### Pembagian sumber kebenaran (PENTING)
+| Sumber | Isi | Sifat |
+| :--- | :--- | :--- |
+| **SQL DB** (`.bak` ter-restore) | akun, karakter, inventory-instance, log, shop | **dinamis** |
+| **G-Logic** (`GLogicServer.rcc` di `data/`) | stat item, skill, drop, balance, map, script | **statis/desain** |
+
+### Konsekuensi untuk port
+- **FieldServer** (Gaea, [`RanLogicServer/FieldServer/GLGaeaServer.cpp`](file:///Users/mochammad.emir/Library/Mobile%20Documents/com~apple%20CloudDocs/Code/ran-online/RanLogicServer/FieldServer/GLGaeaServer.cpp)) **wajib** folder `data/` (berisi `GLogicServer.rcc` + map `.wld` via [`RanLogic/GLLevelFile.{h,cpp}`](file:///Users/mochammad.emir/Library/Mobile%20Documents/com~apple%20CloudDocs/Code/ran-online/RanLogic/GLLevelFile.cpp) / `GLMapList`). Ia **paling lama start** karena load semua `.wld`.
+- ⚠️ **Tak ada `.rcc` maupun data lepas di source tree ini** — hanya kode pembaca/packer. Jadi **butuh client/server build lama atau dataset `data/`** untuk: (a) menjalankan FieldServer, (b) memanen aset 3D. Dua jalur: ekstrak dari `.rcc` build lama, **atau** suapkan file lepas via `bGLOGIC_PACKFILE` (tanpa bongkar enkripsi).
+- **Urutan fan-out kita kebetulan tepat**: Auth/Login/Agent/Session = **DB-driven** (bisa jalan tanpa glogic); **FieldServer = glogic-blocked** → wajar di-port belakangan setelah dataset `data/` tersedia.
+
+---
+
 ## 4. Implikasi codec/`NET_COMPRESS`
 
 Paket `NET_COMPRESS` pakai **LZO** (`XLib_lzo`, lisensi **GPL v2+**, by Oberhumer). Karena **kita punya source client + engine penuh**, kita **tidak terkunci** ke client lama:
