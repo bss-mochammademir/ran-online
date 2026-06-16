@@ -20,7 +20,7 @@ std::string dbConnFromEnv() {
     const char* db = std::getenv("DB_NAME");
     if (!pw || !sv) return {};
     return std::string("DRIVER={ODBC Driver 18 for SQL Server};SERVER=") + sv +
-           ";UID=sa;PWD=" + pw + ";DATABASE=" + (db ? db : "RanGame") +
+           ";UID=sa;PWD=" + pw + ";DATABASE=" + (db ? db : "RanGameS1") +
            ";Encrypt=yes;TrustServerCertificate=yes;";
 }
 } // namespace

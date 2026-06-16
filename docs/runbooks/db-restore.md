@@ -69,15 +69,27 @@ SQLCMD -Q "RESTORE FILELISTONLY FROM DISK='/var/opt/mssql/backup/RanGameS1.bak';
 Ganti `<DataLogical>`/`<LogLogical>` dengan `LogicalName` dari Langkah 3. Pola untuk satu DB:
 
 ```bash
-SQLCMD -Q "RESTORE DATABASE [RanGame] FROM DISK='/var/opt/mssql/backup/RanGameS1.bak' \
-  WITH MOVE '<DataLogical>' TO '/var/opt/mssql/data/RanGame.mdf', \
-       MOVE '<LogLogical>'  TO '/var/opt/mssql/data/RanGame_log.ldf', \
+SQLCMD -Q "RESTORE DATABASE [RanGameS1] FROM DISK='/var/opt/mssql/backup/RanGameS1.bak' \
+  WITH MOVE '<DataLogical>' TO '/var/opt/mssql/data/RanGameS1.mdf', \
+       MOVE '<LogLogical>'  TO '/var/opt/mssql/data/RanGameS1_log.ldf', \
        REPLACE, RECOVERY;"
 ```
 
-Ulangi untuk 8 backup → nama DB saran: `RanGame`, `RanUser`, `RanLog`, `RanShop`, `RanMobileInterface`, `WBGame`, `WBLog`, `WBUser`.
+Ulangi untuk 8 backup → **nama DB harus persis nama produksi asli**: `RanGameS1`, `RanUser`, `RanLogS1`, `RanShop`, `RanMobileInterface`, `WBGame`, `WBLog`, `WBUser`.
 
-> Kalau ingin compat level naik ke 2022: `ALTER DATABASE [RanGame] SET COMPATIBILITY_LEVEL = 160;` — **tapi untuk spike, biarkan compat asli dulu** agar perilaku SP identik dengan produksi lama.
+> ⚠️ **JANGAN rename `RanGameS1`→`RanGame` atau `RanLogS1`→`RanLog`** (kesalahan awal yang sudah dikoreksi 2026-06-16). Beberapa SP/view memakai **three-part naming** cross-database yang hardcode nama `...S1`, jadi rename memecahkan SP secara diam-diam saat runtime:
+> - `RanShop.dbo.sp_sumGameMoneyOfHour` → `RanGameS1.dbo.ChaInfo` / `.UserInven` / `.GuildInfo`
+> - `RanLogS1.dbo.job_RanGamePostBox` → `RanGameS1.dbo.PostInfo`
+> - `RanGameS1.dbo.sp_parseChaSkillsAndSendBank` → `RanLogS1.dbo.sp_purchase_insert_item`
+>
+> Cek cepat hardcode nama DB di semua SP/view sebelum rename apa pun:
+> ```sql
+> SELECT o.name FROM <DB>.sys.sql_modules m JOIN <DB>.sys.objects o ON m.object_id=o.object_id
+> WHERE m.definition LIKE '%RanGameS1%' OR m.definition LIKE '%RanLogS1%';
+> ```
+> Catatan: `RanLogS1.dbo.sp_purchase_insert_item` ternyata **tidak ada di backup** (pola sama dengan `sp_CertificationUniqKey` di Global Auth DB) — gap terpisah, bukan akibat penamaan.
+
+> Kalau ingin compat level naik ke 2022: `ALTER DATABASE [RanGameS1] SET COMPATIBILITY_LEVEL = 160;` — **tapi untuk spike, biarkan compat asli dulu** agar perilaku SP identik dengan produksi lama.
 
 Verifikasi:
 ```bash
@@ -86,11 +98,11 @@ SQLCMD -Q "SELECT name, compatibility_level, state_desc FROM sys.databases ORDER
 
 ## Langkah 5 — Artefak A: SP Inventory
 
-Jalankan per database (contoh `RanGame`). Ulangi untuk semua, kumpulkan angkanya.
+Jalankan per database (contoh `RanGameS1`). Ulangi untuk semua, kumpulkan angkanya.
 
 ```sql
 -- Rekap jumlah objek programmable
-USE RanGame;
+USE RanGameS1;
 SELECT
   SUM(CASE WHEN type IN ('P','PC') THEN 1 ELSE 0 END) AS stored_procedures,
   SUM(CASE WHEN type IN ('FN','IF','TF','FS','FT') THEN 1 ELSE 0 END) AS functions,
@@ -112,7 +124,7 @@ Catat total SP gabungan dari ke-8 DB → **inilah angka pasti** yang menggantika
 Scan definisi semua modul (`sys.sql_modules`) untuk pola fitur yang bermasalah di SQL Server on Linux. Jalankan per DB:
 
 ```sql
-USE RanGame;
+USE RanGameS1;
 WITH m AS (
   SELECT o.name AS obj, mo.definition
   FROM sys.sql_modules mo JOIN sys.objects o ON o.object_id = mo.object_id

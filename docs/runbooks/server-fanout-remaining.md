@@ -13,7 +13,7 @@
 | **LoginServer** | `CLoginServer` | 9200 | RanUser | GeoIP filter, version check, channel-list sync dari SessionServer, `NET_MSG_REQ_GAME_SVR` handler |
 | **SessionServer** | `CSessionServer` | 9401 | RanUser | Pelacakan karakter (MsgChaIncrease/Decrease), chat relay (MsgChatProcess/SndChatGlobal), heartbeat beban channel, distribusi perintah GM |
 | **AgentServer** | `CAgentServer` | 9301 | RanUser | Login regional (IdnMsgLogIn dll.), koneksi Field Server pool (`FieldConnectAll`), routing paket (SendField/SendFieldSvr), anti-cheat nProtect |
-| **FieldServer** | `s_CFieldServer` + `GLGaeaServer` | 9501 | **RanGame** | Gaea Engine (combat/AI/peta), CacheServer slot (tulis async DB), instance map, memory auto-restart guard |
+| **FieldServer** | `s_CFieldServer` + `GLGaeaServer` | 9501 | **RanGameS1** | Gaea Engine (combat/AI/peta), CacheServer slot (tulis async DB), instance map, memory auto-restart guard |
 
 Semua mengikuti **bentuk lifecycle** yang persis sama dengan AuthServer:
 ```
@@ -30,7 +30,7 @@ OnStop: tutup DB + resource lainnya
 
 - **SessionServer** hanya menerima koneksi dari server lain (Login/Agent/Field), bukan dari client langsung — tapi pipeline paket sama.
 - **AgentServer** menyambungkan diri *keluar* ke semua Field Server saat startup (`FieldConnectAll` → stub di `OnStart`).
-- **FieldServer** hanya menerima koneksi dari AgentServer (bukan client langsung). DB utama = **RanGame** (data karakter: inventory, skill, quest) — berbeda dari 3 server lainnya (RanUser).
+- **FieldServer** hanya menerima koneksi dari AgentServer (bukan client langsung). DB utama = **RanGameS1** (data karakter: inventory, skill, quest) — berbeda dari 3 server lainnya (RanUser).
 - **FieldServer** di produksi *menulis* lewat CacheServer (antrean async), bukan langsung ke DB — ditangguhkan.
 
 ---
@@ -65,7 +65,7 @@ docker run --rm --network rannet --platform linux/amd64 \
     g++ -std=c++17 $COMMON /src/servers/fieldserver/field_server.cpp \
         /src/servers/fieldserver/fieldserver_smoke.cpp \
         $INC -I/src/servers/fieldserver -lodbc -lpthread -o /tmp/fieldserver_smoke
-    DB_NAME=RanGame /tmp/fieldserver_smoke'
+    DB_NAME=RanGameS1 /tmp/fieldserver_smoke'
 ```
 
 ---
@@ -85,7 +85,7 @@ FIELDSERVER SMOKE OK: asio lifecycle + framed packet pipeline.
 LoginServer:   probe row name=AccountInfo (RanUser)   → 13/13 PASS
 SessionServer: probe row name=AccountInfo (RanUser)   → 13/13 PASS
 AgentServer:   probe row name=AccountInfo (RanUser)   → 13/13 PASS
-FieldServer:   probe row name=ActivityClosed (RanGame) → 13/13 PASS
+FieldServer:   probe row name=ActivityClosed (RanGameS1) → 13/13 PASS
 ```
 
 Setiap smoke: Start → DB connect (OdbcDb) → terima koneksi TCP nyata → 3 frame ber-frame (termasuk split) → echo balik decode → Stop.
@@ -94,8 +94,9 @@ Setiap smoke: Start → DB connect (OdbcDb) → terima koneksi TCP nyata → 3 f
 
 ## Catatan teknis
 
-- **RanGame** vs **RanUser**: hanya FieldServer yang membuka DB berbeda. `DB_NAME=RanGame` dibutuhkan saat jalankan smoke dengan env DB.
-- **FieldServer probe**: `ActivityClosed` adalah tabel pertama dalam urutan alfabet di `RanGame`.
+- **RanGameS1** vs **RanUser**: hanya FieldServer yang membuka DB berbeda. `DB_NAME=RanGameS1` dibutuhkan saat jalankan smoke dengan env DB.
+- ⚠️ **Nama DB WAJIB `RanGameS1`/`RanLogS1` (dengan suffix S1)** — bukan `RanGame`/`RanLog`. Beberapa SP/view cross-database hardcode nama `...S1` via three-part naming (mis. `RanShop.sp_sumGameMoneyOfHour` → `RanGameS1.dbo.ChaInfo`); rename memecahkan SP saat runtime. Detail + cek pra-rename di [db-restore.md §Langkah 4](db-restore.md). (Koreksi 2026-06-16: DB sempat di-restore sebagai `RanGame`, sudah di-rename balik ke `RanGameS1`.)
+- **FieldServer probe**: `ActivityClosed` adalah tabel pertama dalam urutan alfabet di `RanGameS1`.
 - **Env vars**: `LOGIN_PORT`, `SESSION_PORT`, `AGENT_PORT`, `FIELD_PORT` — masing-masing default ke port asli.
 - **Semua dispatch echo**: hingga handler pesan di-port, semua tipe pesan di-echo kembali ke pengirim agar pipeline tetap terobservasi.
 

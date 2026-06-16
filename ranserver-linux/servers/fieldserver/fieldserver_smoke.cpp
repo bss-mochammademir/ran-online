@@ -29,10 +29,11 @@ int main() {
     const char* sv = std::getenv("DB_SERVER");
     const char* db = std::getenv("DB_NAME");
     if (pw && sv) {
-        // FieldServer uses RanGame (character data); fall back to RanUser if DB_NAME unset
-        // so the smoke works against either restored DB.
+        // FieldServer uses RanGameS1 (character data) — the original production DB name;
+        // the .bak ships logical name RanGameS1, and SPs in RanShop/RanLog cross-reference
+        // RanGameS1.dbo.* by three-part name, so the restored DB MUST keep the S1 suffix.
         dbConn = std::string("DRIVER={ODBC Driver 18 for SQL Server};SERVER=") + sv +
-                 ";UID=sa;PWD=" + pw + ";DATABASE=" + (db ? db : "RanGame") +
+                 ";UID=sa;PWD=" + pw + ";DATABASE=" + (db ? db : "RanGameS1") +
                  ";Encrypt=yes;TrustServerCertificate=yes;";
     }
 
@@ -41,7 +42,7 @@ int main() {
 
     check("Start() returns 0", srv.Start() == 0);
     check("IsRunning() after Start", srv.IsRunning());
-    if (!dbConn.empty()) check("DB layer connected (RanGame)", srv.DbReady());
+    if (!dbConn.empty()) check("DB layer connected (RanGameS1)", srv.DbReady());
     else std::cout << "  SKIP DB layer assertion (no SA_PASSWORD/DB_SERVER env)\n";
 
     // simulate an AgentServer sending 3 framed messages to FieldServer
@@ -97,7 +98,7 @@ int main() {
     std::cout << "\n";
     if (g_fail == 0) {
         std::cout << "FIELDSERVER SMOKE OK: asio lifecycle + framed packet pipeline"
-                  << (dbConn.empty() ? "" : " + OdbcDb connect (RanGame)") << ".\n";
+                  << (dbConn.empty() ? "" : " + OdbcDb connect (RanGameS1)") << ".\n";
         return 0;
     }
     std::cout << "FIELDSERVER SMOKE FAILED: " << g_fail << " assertion(s).\n";
