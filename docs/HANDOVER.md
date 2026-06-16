@@ -192,7 +192,8 @@ Saran urutan: **A atau B** (irisan vertikal bernilai tinggi, butuh keputusan kea
 | File | Isi |
 | :--- | :--- |
 | `docs/00_design_pillars.md` | **baca pertama** — north-star, 5 pilar, ekonomi, monetisasi |
-| `docs/08_source_tree_map.md` | **peta lengkap source (anti-kuncen)** — client+server+engine+tools+lib; apa di-port vs belum; batas git; implikasi codec/LZO |
+| `docs/08_source_tree_map.md` | **peta lengkap source (anti-kuncen)** — client+server+engine+tools+lib; apa di-port vs belum; batas git; implikasi codec/LZO; G-Logic (rules di luar DB) |
+| `docs/09_gm_commands.md` | **katalog 177 GM Command** + hierarki grade `UserType` + routing lintas-server; cetak biru admin console + titik desain anti-judi (random box) |
 | `docs/06_master_plan.md` | payung arsitektur EA→SA→TA + roadmap Fase 0–5 |
 | `docs/07_ai_delivery_operating_model.md` | model operasi tim-agen AI: kapan "chip", mode eksekusi, autonomy ladder, aturan serial→fan-out |
 | `docs/adr/ADR-001-*.md` | keputusan Hybrid (SQL Server di Linux + C++ port) |
