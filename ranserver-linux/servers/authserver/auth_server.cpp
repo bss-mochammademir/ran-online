@@ -3,6 +3,7 @@
 #include <cstdlib>
 #include <string>
 #include <vector>
+#include <cstring>
 
 namespace sc { namespace servers {
 
@@ -82,7 +83,16 @@ void AuthServer::OnUpdate() {
     m_recvMsgs.MsgQueueFlip();
     sc::net::Message msg;
     while (m_recvMsgs.GetMsg(msg)) dispatch(msg);
+
+    // Flush outgoing messages for all sessions
+    {
+        std::lock_guard<std::mutex> lk(m_sessMx);
+        for (auto& pair : m_sessions) {
+            pair.second->Flush();
+        }
+    }
 }
+
 
 void AuthServer::dispatch(const sc::net::Message& msg) {
     ++m_processed;
@@ -104,27 +114,69 @@ void AuthServer::dispatch(const sc::net::Message& msg) {
     // Route by message type (the AuthPacketFunc dispatch table). The cert request
     // is the first real handler ported (MsgAuthCertificationRequest); other types
     // are echoed for observability until ported.
-    if (msg.type == kMsgAuthCertReq) {
-        std::string payload(msg.payload(), msg.payloadSize());
-        auto f = splitFields(payload, ';');
-        if (f.size() < 6) { reply(kMsgAuthCertAns, "0;0;0;"); return; }
+    if (msg.type == NET_MSG_AUTH_CERTIFICATION_REQUEST) {
+        if (msg.payloadSize() < sizeof(G_AUTH_INFO)) {
+            Log("cert request payload too small: " + std::to_string(msg.payloadSize()));
+            return;
+        }
+
+        const G_AUTH_INFO* gsiReq = reinterpret_cast<const G_AUTH_INFO*>(msg.payload());
+
+        // Decrypt szAuthData
+        std::string decrypted = DecryptAuthData(gsiReq->szAuthData);
+        if (decrypted.empty()) {
+            Log("cert request: failed to decrypt szAuthData");
+            return;
+        }
+
+        // Parse CSV: ServiceProvider, ServerType, IP, Port, UniqKey
+        auto f = splitFields(decrypted, ',');
+        if (f.size() < 5) {
+            Log("cert request: invalid decrypted CSV fields count: " + std::to_string(f.size()));
+            return;
+        }
+
         CertRequest req;
         req.country      = std::atoi(f[0].c_str());
         req.serverType   = std::atoi(f[1].c_str());
         req.ip           = f[2];
         req.port         = std::atoi(f[3].c_str());
         req.uniqKey      = f[4];
-        req.isSessionSvr = std::atoi(f[5].c_str());
+        req.isSessionSvr = (req.serverType == SERVER_SESSION) ? 1 : 0;
 
         CertResult res;
         bool ok = ProcessCertificationForAuth(req, res);
         Log("cert request uniqKey=" + req.uniqKey + " -> " +
             (ok ? "certification=" + std::to_string(res.certification) : "DB_ERROR: " + m_db.LastError()));
-        // response: ok;certification;sessionSvrId;newUniqKey
-        const std::string out = std::string(ok && res.ok ? "1" : "0") + ";" +
-                                std::to_string(res.certification) + ";" +
-                                std::to_string(res.sessionSvrId) + ";" + res.newUniqKey;
-        reply(kMsgAuthCertAns, out);
+
+        // Build G_AUTH_INFO for the answer
+        G_AUTH_INFO gsiAns = {};
+        gsiAns.nCounrtyType = req.country;
+        gsiAns.ServerType   = req.serverType;
+        std::strncpy(gsiAns.szServerIP, req.ip.c_str(), sizeof(gsiAns.szServerIP) - 1);
+        gsiAns.nServicePort = req.port;
+
+        if (req.serverType == SERVER_SESSION) {
+            gsiAns.nSessionSvrID = res.sessionSvrId;
+        } else {
+            gsiAns.nSessionSvrID = 0;
+        }
+
+        // Combine certified fields: ServiceProvider, ServerType, IP, Port, NewUniqKey, Certification
+        std::string certPlain = std::to_string(req.country) + "," +
+                                std::to_string(req.serverType) + "," +
+                                req.ip + "," +
+                                std::to_string(req.port) + "," +
+                                res.newUniqKey + "," +
+                                std::to_string(res.certification);
+
+        std::string encryptedHex = EncryptAuthData(certPlain);
+        std::strncpy(gsiAns.szAuthData, encryptedHex.c_str(), sizeof(gsiAns.szAuthData) - 1);
+
+        // Reply with NET_MSG_AUTH_CERTIFICATION_ANS (205)
+        session->Send(std::make_shared<std::vector<char>>(
+            sc::net::EncodeMessage(NET_MSG_AUTH_CERTIFICATION_ANS, &gsiAns, sizeof(G_AUTH_INFO))
+        ));
         return;
     }
 

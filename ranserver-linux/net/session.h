@@ -2,10 +2,13 @@
 #define SC_NET_SESSION_H
 
 #include <array>
+#include <deque>
 #include <functional>
 #include <memory>
+#include <mutex>
 #include <boost/asio.hpp>
 #include "packet.h"
+#include "send_msg_buffer.h"
 
 namespace sc { namespace net {
 
@@ -25,12 +28,16 @@ public:
 
     void Start();                                   // begin the read loop
     void Send(std::shared_ptr<const std::vector<char>> framed);  // async write a framed message
+    void Flush();                                   // flush any batched messages
     void Close();
 
     uint32_t ClientId() const { return m_clientId; }
+    std::string RemoteIp() const;
 
 private:
     void doRead();
+    void enqueueWrite(std::shared_ptr<const std::vector<char>> packet);
+    void doWrite();
 
     boost::asio::ip::tcp::socket m_sock;
     uint32_t                     m_clientId;
@@ -39,7 +46,14 @@ private:
     MessageFramer                m_framer;
     std::array<char, kMaxMessageSize> m_readBuf;
     bool                         m_closed = false;
+
+    // Send buffering & write queue
+    SendMsgBuffer                m_sendBuffer;
+    std::deque<std::shared_ptr<const std::vector<char>>> m_writeQueue;
+    bool                         m_writeInProgress = false;
+    std::mutex                   m_writeMx;
 };
+
 
 }} // namespace sc::net
 

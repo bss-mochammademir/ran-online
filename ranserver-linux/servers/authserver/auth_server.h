@@ -11,18 +11,11 @@
 #include "msg_manager.h"
 #include "session.h"
 #include "odbc_db.h"
+#include "auth_crypto.h"
+#include "auth_server_msg.h"
 
 namespace sc { namespace servers {
 
-// Message type ids for the certification slice. Production values come from the
-// EMNET_MSG enum (NET_MSG_AUTH_CERTIFICATION_REQUEST/_ANS in s_NetGlobal.h); these
-// slice-local ids keep the smoke self-contained until that enum is mapped.
-constexpr uint32_t kMsgAuthCertReq = 0x0A01;
-constexpr uint32_t kMsgAuthCertAns = 0x0A02;
-
-// Inputs to dbo.sp_CertificationUniqKey. In production these fields are decrypted
-// from NET_AUTH_CERTIFICATION_REQUEST's G_AUTH_INFO.szAuthData by GlobalAuthManager
-// (that crypto is a deferred follow-on); the slice carries them in the payload.
 struct CertRequest {
     int         country     = 0;
     int         serverType  = 0;
@@ -31,6 +24,7 @@ struct CertRequest {
     std::string uniqKey;
     int         isSessionSvr = 0;
 };
+
 // Result row from sp_CertificationUniqKey (read back as a result set).
 struct CertResult {
     bool        ok           = false;

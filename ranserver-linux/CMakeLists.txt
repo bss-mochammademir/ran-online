@@ -28,6 +28,15 @@ target_link_libraries(db_smoke PRIVATE ran_db)
 add_executable(db_param_smoke db/db_param_smoke.cpp)
 target_link_libraries(db_param_smoke PRIVATE ran_db)
 
+# LZO static library target compiled from the embedded XLib_lzo repository.
+# We compile with -fwrapv because miniacc.h compile-time asserts check signed integer overflows (like 1 << 31).
+add_library(ran_lzo STATIC
+    ${CMAKE_SOURCE_DIR}/../XLib_lzo/src/lzo_init.c
+    ${CMAKE_SOURCE_DIR}/../XLib_lzo/src/lzo1x_1.c
+    ${CMAKE_SOURCE_DIR}/../XLib_lzo/src/lzo1x_d2.c)
+target_compile_options(ran_lzo PRIVATE -fwrapv)
+target_include_directories(ran_lzo PRIVATE ${CMAKE_SOURCE_DIR}/../XLib_lzo/include)
+
 # Network layer — cross-platform server base + packet codec, IOCP -> boost::asio
 # port of the shared Win32 NetServer (RanLogicServer/Server/NetServer) and the
 # message framing/queue (SigmaCore/Net + RanLogic/s_NetGlobal). boost::asio is
@@ -35,17 +44,26 @@ target_link_libraries(db_param_smoke PRIVATE ran_db)
 add_library(ran_net STATIC
     net/net_server.cpp
     net/packet.cpp        # NET_MSG_GENERIC framing (RanLogic/s_NetGlobal.h)
-    net/session.cpp)      # per-connection async read loop
+    net/session.cpp       # per-connection async read loop
+    net/minlzo.cpp        # LZO wrapper
+    net/send_msg_buffer.cpp) # Output compression buffer
 target_include_directories(ran_net PUBLIC ${CMAKE_SOURCE_DIR}/net ${Boost_INCLUDE_DIRS})
-target_link_libraries(ran_net PUBLIC Threads::Threads)
+target_link_libraries(ran_net PUBLIC Threads::Threads ran_lzo)
 
 # Packet codec unit smoke (no sockets): framing + MsgManager double-buffer.
 add_executable(packet_smoke net/packet_smoke.cpp)
 target_link_libraries(packet_smoke PRIVATE ran_net)
 
+# LZO Smoke test
+add_executable(lzo_smoke net/lzo_smoke.cpp)
+target_link_libraries(lzo_smoke PRIVATE ran_net)
+
+
 # ---- Fan-out: per-server targets, each riding the shared net/db layers ----------
 # AuthServer (first fan-out server): Linux skeleton of CAuthServer on ran_net + ran_db.
-add_library(authserver_lib STATIC servers/authserver/auth_server.cpp)
+add_library(authserver_lib STATIC
+    servers/authserver/auth_server.cpp
+    servers/authserver/auth_crypto.cpp)
 target_include_directories(authserver_lib PUBLIC ${CMAKE_SOURCE_DIR}/servers/authserver)
 target_link_libraries(authserver_lib PUBLIC ran_net ran_db)
 

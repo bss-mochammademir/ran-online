@@ -27,7 +27,9 @@ namespace sc { namespace net {
 // additive on top of this framing.
 
 constexpr std::size_t kHeaderSize     = 8;     // NET_MSG_GENERIC: dwSize(4) + nType(4)
-constexpr std::size_t kMaxMessageSize = 2048;  // NET_DATA_BUFSIZE (addMsg() rejects above this)
+constexpr std::size_t kMaxMessageSize = 4108;  // NET_DATA_MSG_BUFSIZE + sizeof(NET_COMPRESS)
+constexpr uint32_t    NET_MSG_COMPRESS = 170;  // Compressed/combined message type
+
 
 inline uint32_t ReadLE32(const unsigned char* p) {
     return  static_cast<uint32_t>(p[0])
