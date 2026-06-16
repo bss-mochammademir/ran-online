@@ -207,6 +207,8 @@ Saran urutan: **A atau B** (irisan vertikal bernilai tinggi, butuh keputusan kea
 | `docs/runbooks/net-packet-layer.md` | lapisan paket (framing, double-buffer) |
 | `docs/runbooks/auth-cert-flow.md` | irisan vertikal cert AuthServer |
 | `docs/runbooks/server-fanout-remaining.md` | fan-out #2–5 Login/Session/Agent/Field |
+| `docs/runbooks/agent-login-handler.md` | Handler Login Agent (Chip A) |
+| `docs/runbooks/auth-cert-crypto.md` | Kriptografi Sertifikasi Penuh (Chip B) |
 
 ---
 

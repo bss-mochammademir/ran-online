@@ -29,6 +29,7 @@ int main() {
     namespace asio = boost::asio;
     using tcp = boost::asio::ip::tcp;
     using namespace sc::net;
+    using namespace sc::servers;
 
     const unsigned short port = 18901;
     std::string dbConn;
@@ -115,20 +116,30 @@ int main() {
         check("stand-in sp_CertificationUniqKey created", sp, sp ? "" : setup.LastError());
 
         uint32_t ansType = 0;
-        std::string ans;
+        G_AUTH_INFO gsiAns = {};
+        bool readOk = false;
         {
             asio::io_context cio;
             tcp::socket s(cio);
             boost::system::error_code ec;
             s.connect(tcp::endpoint(asio::ip::make_address("127.0.0.1"), port), ec);
             if (!ec) {
-                const std::string payload = "0;1;127.0.0.1;9101;GOODKEY;0";
-                auto req = EncodeMessage(sc::servers::kMsgAuthCertReq, payload.data(), payload.size());
+                G_AUTH_INFO reqInfo = {};
+                reqInfo.ServerType = sc::servers::SERVER_LOGIN;
+                reqInfo.nCounrtyType = 0;
+                std::strncpy(reqInfo.szServerIP, "127.0.0.1", sizeof(reqInfo.szServerIP) - 1);
+                reqInfo.nServicePort = 9101;
+
+                std::string plainText = "0,1,127.0.0.1,9101,GOODKEY";
+                std::string encryptedHex = sc::servers::EncryptAuthData(plainText);
+                std::strncpy(reqInfo.szAuthData, encryptedHex.c_str(), sizeof(reqInfo.szAuthData) - 1);
+
+                auto req = EncodeMessage(sc::servers::NET_MSG_AUTH_CERTIFICATION_REQUEST, &reqInfo, sizeof(G_AUTH_INFO));
                 asio::write(s, asio::buffer(req), ec);
 
                 MessageFramer cfr;
                 std::vector<Message> rsp;
-                auto buf = std::make_shared<std::array<char, 512>>();
+                auto buf = std::make_shared<std::array<char, 1024>>();
                 std::function<void()> rd = [&]() {
                     s.async_read_some(asio::buffer(*buf),
                         [&](const boost::system::error_code& e, std::size_t n) {
@@ -139,16 +150,37 @@ int main() {
                 };
                 rd();
                 cio.run_for(std::chrono::milliseconds(1500));
-                if (!rsp.empty()) { ansType = rsp[0].type; ans.assign(rsp[0].payload(), rsp[0].payloadSize()); }
+                if (!rsp.empty() && rsp[0].payloadSize() >= sizeof(G_AUTH_INFO)) {
+                    ansType = rsp[0].type;
+                    std::memcpy(&gsiAns, rsp[0].payload(), sizeof(G_AUTH_INFO));
+                    readOk = true;
+                }
             }
         }
-        // response payload = "ok;certification;sessionSvrId;newUniqKey"
-        std::vector<std::string> f; { std::string cur; for (char c : ans) { if (c == ';') { f.push_back(cur); cur.clear(); } else cur += c; } f.push_back(cur); }
-        check("cert response type = kMsgAuthCertAns", ansType == sc::servers::kMsgAuthCertAns);
-        check("cert SP ran (ProcessCertificationForAuth)", f.size() >= 4 && f[0] == "1", ans);
-        check("Certification=1 for GOODKEY", f.size() >= 4 && f[1] == "1", ans);
-        check("SessionSvrID = serverport+1000", f.size() >= 4 && f[2] == "10101", ans);
-        check("new UniqKey from SP", f.size() >= 4 && f[3] == "GOODKEY-NEW", ans);
+
+        check("cert response type = NET_MSG_AUTH_CERTIFICATION_ANS", ansType == sc::servers::NET_MSG_AUTH_CERTIFICATION_ANS);
+        check("cert response read OK", readOk);
+
+        std::string decrypted = readOk ? sc::servers::DecryptAuthData(gsiAns.szAuthData) : "";
+        std::vector<std::string> f;
+        if (!decrypted.empty()) {
+            std::string cur;
+            for (char c : decrypted) {
+                if (c == ',') { f.push_back(cur); cur.clear(); }
+                else cur += c;
+            }
+            f.push_back(cur);
+        }
+
+        check("cert SP ran and decrypted OK", !decrypted.empty() && f.size() >= 6, "decrypted=" + decrypted);
+        if (f.size() >= 6) {
+            check("Certification=1 for GOODKEY", f[5] == "1", "cert=" + f[5]);
+            check("SessionSvrID = 0 (for SERVER_LOGIN)", gsiAns.nSessionSvrID == 0);
+            check("new UniqKey from SP", f[4] == "GOODKEY-NEW", "uniqKey=" + f[4]);
+        } else {
+            check("Certification=1 for GOODKEY", false);
+            check("new UniqKey from SP", false);
+        }
 
         setup.Execute("DROP PROCEDURE IF EXISTS dbo.sp_CertificationUniqKey");
         setup.Close();

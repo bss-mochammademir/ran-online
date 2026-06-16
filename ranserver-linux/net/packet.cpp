@@ -1,6 +1,7 @@
 #include "packet.h"
-
+#include "minlzo.h"
 #include <cstring>
+#include <vector>
 
 namespace sc { namespace net {
 
@@ -30,10 +31,76 @@ bool MessageFramer::Feed(const char* data, std::size_t len, std::vector<Message>
         if (m_buf.size() - pos < dwSize)
             break;         // incomplete frame; wait for more bytes
 
-        Message m;
-        m.type = nType;
-        m.bytes.assign(m_buf.begin() + pos, m_buf.begin() + pos + dwSize);
-        out.push_back(std::move(m));
+        if (nType == NET_MSG_COMPRESS) {
+            if (dwSize < 12)
+                return false; // NET_COMPRESS struct size is 12 bytes minimum
+
+            const uint8_t bCompress = h[8];
+            
+            if (bCompress == 1) {
+                // Initialize LZO if not done yet
+                CMinLzo::GetInstance().init();
+                
+                std::vector<uint8_t> decompBuf(32768); // 32KB client receive buffer size
+                int decompSize = static_cast<int>(decompBuf.size());
+                
+                int res = CMinLzo::GetInstance().lzoDeCompress(
+                    h + 12,
+                    dwSize - 12,
+                    decompBuf.data(),
+                    decompSize
+                );
+                
+                if (res != CMinLzo::MINLZO_SUCCESS) {
+                    return false; // Decompression failure is a protocol error
+                }
+                
+                // Parse nested messages from the decompressed buffer
+                std::size_t decPos = 0;
+                while (static_cast<int>(decompSize - decPos) >= static_cast<int>(kHeaderSize)) {
+                    const unsigned char* decH = decompBuf.data() + decPos;
+                    uint32_t decMsgSize = ReadLE32(decH);
+                    uint32_t decMsgType = ReadLE32(decH + 4);
+                    
+                    if (decMsgSize < kHeaderSize || decMsgSize > (decompSize - decPos)) {
+                        return false; // Malformed inner packet size
+                    }
+                    
+                    Message innerMsg;
+                    innerMsg.type = decMsgType;
+                    innerMsg.bytes.assign(decompBuf.begin() + decPos, decompBuf.begin() + decPos + decMsgSize);
+                    out.push_back(std::move(innerMsg));
+                    decPos += decMsgSize;
+                }
+            } else {
+                // Uncompressed batch of messages: parse directly from the envelope payload
+                std::size_t rawPos = pos + 12;
+                std::size_t endPos = pos + dwSize;
+                
+                while (endPos - rawPos >= kHeaderSize) {
+                    const unsigned char* rawH = reinterpret_cast<const unsigned char*>(m_buf.data()) + rawPos;
+                    uint32_t rawMsgSize = ReadLE32(rawH);
+                    uint32_t rawMsgType = ReadLE32(rawH + 4);
+                    
+                    if (rawMsgSize < kHeaderSize || rawMsgSize > (endPos - rawPos)) {
+                        return false; // Malformed inner packet size
+                    }
+                    
+                    Message innerMsg;
+                    innerMsg.type = rawMsgType;
+                    innerMsg.bytes.assign(m_buf.begin() + rawPos, m_buf.begin() + rawPos + rawMsgSize);
+                    out.push_back(std::move(innerMsg));
+                    rawPos += rawMsgSize;
+                }
+            }
+        } else {
+            // Standard uncompressed message
+            Message m;
+            m.type = nType;
+            m.bytes.assign(m_buf.begin() + pos, m_buf.begin() + pos + dwSize);
+            out.push_back(std::move(m));
+        }
+
         pos += dwSize;
     }
 
@@ -42,3 +109,4 @@ bool MessageFramer::Feed(const char* data, std::size_t len, std::vector<Message>
 }
 
 }} // namespace sc::net
+

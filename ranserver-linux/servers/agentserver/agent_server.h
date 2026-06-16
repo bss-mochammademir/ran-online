@@ -11,6 +11,7 @@
 #include "msg_manager.h"
 #include "session.h"
 #include "odbc_db.h"
+#include "agent_server_msg.h"
 
 namespace sc { namespace servers {
 
@@ -42,8 +43,14 @@ protected:
 private:
     void dispatch(const sc::net::Message& msg);
 
+    bool ProcessUserLogin(const std::string& username, const std::string& password, const std::string& ip,
+                         int& userNum, int& userType, uint16_t& chaRemain, uint16_t& chaTestRemain,
+                         std::string& premiumDate, std::string& chatBlockDate, std::string& lastLoginDate,
+                         int& errCode);
+
     std::string       m_dbConn;
     sc::db::OdbcDb    m_db;
+    std::mutex        m_dbMx;
     std::atomic<bool> m_dbReady{false};
     std::atomic<long> m_accepted{0};
     std::atomic<long> m_updates{0};

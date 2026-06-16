@@ -39,11 +39,89 @@ void Session::doRead() {
 }
 
 void Session::Send(std::shared_ptr<const std::vector<char>> framed) {
+    int res = m_sendBuffer.addMsg(framed->data(), framed->size());
+    switch (res) {
+        case SendMsgBuffer::BUFFER_ERROR:
+            Close();
+            break;
+        case SendMsgBuffer::BUFFER_ADDED:
+            break;
+        case SendMsgBuffer::BUFFER_SEND: {
+            int dwSendSize = m_sendBuffer.getSendSize();
+            if (dwSendSize > 0) {
+                auto compressed = std::make_shared<std::vector<char>>(
+                    m_sendBuffer.getSendBuffer(),
+                    m_sendBuffer.getSendBuffer() + dwSendSize
+                );
+                enqueueWrite(compressed);
+            }
+            break;
+        }
+        case SendMsgBuffer::BUFFER_SEND_ADD: {
+            int dwSendSize = m_sendBuffer.getSendSize();
+            if (dwSendSize > 0) {
+                auto compressed = std::make_shared<std::vector<char>>(
+                    m_sendBuffer.getSendBuffer(),
+                    m_sendBuffer.getSendBuffer() + dwSendSize
+                );
+                enqueueWrite(compressed);
+            }
+            m_sendBuffer.addMsg(framed->data(), framed->size());
+            break;
+        }
+    }
+}
+
+void Session::Flush() {
+    int dwSendSize = m_sendBuffer.getSendSize();
+    if (dwSendSize > 0) {
+        auto compressed = std::make_shared<std::vector<char>>(
+            m_sendBuffer.getSendBuffer(),
+            m_sendBuffer.getSendBuffer() + dwSendSize
+        );
+        enqueueWrite(compressed);
+    }
+}
+
+void Session::enqueueWrite(std::shared_ptr<const std::vector<char>> packet) {
+    bool startWrite = false;
+    {
+        std::lock_guard<std::mutex> lock(m_writeMx);
+        m_writeQueue.push_back(packet);
+        if (!m_writeInProgress) {
+            m_writeInProgress = true;
+            startWrite = true;
+        }
+    }
+    if (startWrite) {
+        doWrite();
+    }
+}
+
+void Session::doWrite() {
+    std::shared_ptr<const std::vector<char>> packet;
+    {
+        std::lock_guard<std::mutex> lock(m_writeMx);
+        if (m_writeQueue.empty()) {
+            m_writeInProgress = false;
+            return;
+        }
+        packet = m_writeQueue.front();
+    }
+
     auto self = shared_from_this();
     asio::async_write(
-        m_sock, asio::buffer(*framed),
-        [this, self, framed](const boost::system::error_code& ec, std::size_t /*n*/) {
-            if (ec) Close();
+        m_sock, asio::buffer(*packet),
+        [this, self, packet](const boost::system::error_code& ec, std::size_t /*n*/) {
+            if (ec) {
+                Close();
+                return;
+            }
+            {
+                std::lock_guard<std::mutex> lock(m_writeMx);
+                m_writeQueue.pop_front();
+            }
+            doWrite();
         });
 }
 
@@ -53,7 +131,20 @@ void Session::Close() {
     boost::system::error_code ec;
     m_sock.shutdown(tcp::socket::shutdown_both, ec);
     m_sock.close(ec);
+    
+    {
+        std::lock_guard<std::mutex> lock(m_writeMx);
+        m_writeQueue.clear();
+    }
+    
     if (m_onClose) m_onClose(m_clientId);
+}
+
+std::string Session::RemoteIp() const {
+    boost::system::error_code ec;
+    auto ep = const_cast<tcp::socket&>(m_sock).remote_endpoint(ec);
+    if (ec) return "127.0.0.1";
+    return ep.address().to_string();
 }
 
 }} // namespace sc::net
