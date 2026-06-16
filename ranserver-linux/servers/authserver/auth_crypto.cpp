@@ -103,7 +103,11 @@ std::string DecryptAuthData(const std::string& encryptedHex) {
     auto cipherBytes = HexDecode(encryptedHex);
     if (cipherBytes.empty() || cipherBytes.size() % 8 != 0) return "";
 
-    const std::string keyStr = "3b59367098e946a4"; // MD5 of "mincoms"
+    // Key = first 16 chars of the lowercase hex MD5 of "mincoms".
+    // Faithful to RC5EncryptA (SigmaCore/Encrypt/RC5Encrypt.cpp): m_key = first 16
+    // bytes of getMd5A("mincoms"), where getMd5A returns the 32-char lowercase hex
+    // digest. MD5("mincoms") = 0e0aa086965047fbf83b0be88d373673 -> "0e0aa086965047fb".
+    const std::string keyStr = "0e0aa086965047fb";
     const uint8_t* key = reinterpret_cast<const uint8_t*>(keyStr.c_str());
     uint8_t iv[8];
     std::memset(iv, 0x01, 8);
@@ -136,7 +140,7 @@ std::string DecryptAuthData(const std::string& encryptedHex) {
 }
 
 std::string EncryptAuthData(const std::string& plaintext) {
-    const std::string keyStr = "3b59367098e946a4";
+    const std::string keyStr = "0e0aa086965047fb"; // MD5("mincoms")[:16] lowercase hex
     const uint8_t* key = reinterpret_cast<const uint8_t*>(keyStr.c_str());
     uint8_t iv[8];
     std::memset(iv, 0x01, 8);
