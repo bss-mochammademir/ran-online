@@ -54,3 +54,47 @@ target_link_libraries(authserver PRIVATE authserver_lib)
 
 add_executable(authserver_smoke servers/authserver/authserver_smoke.cpp)
 target_link_libraries(authserver_smoke PRIVATE authserver_lib)
+
+# LoginServer — fan-out #2: CLoginServer skeleton (lobby/directory, channel list)
+add_library(loginserver_lib STATIC servers/loginserver/login_server.cpp)
+target_include_directories(loginserver_lib PUBLIC ${CMAKE_SOURCE_DIR}/servers/loginserver)
+target_link_libraries(loginserver_lib PUBLIC ran_net ran_db)
+
+add_executable(loginserver servers/loginserver/main.cpp)
+target_link_libraries(loginserver PRIVATE loginserver_lib)
+
+add_executable(loginserver_smoke servers/loginserver/loginserver_smoke.cpp)
+target_link_libraries(loginserver_smoke PRIVATE loginserver_lib)
+
+# SessionServer — fan-out #3: CSessionServer skeleton (global state hub, chat relay)
+add_library(sessionserver_lib STATIC servers/sessionserver/session_server.cpp)
+target_include_directories(sessionserver_lib PUBLIC ${CMAKE_SOURCE_DIR}/servers/sessionserver)
+target_link_libraries(sessionserver_lib PUBLIC ran_net ran_db)
+
+add_executable(sessionserver servers/sessionserver/main.cpp)
+target_link_libraries(sessionserver PRIVATE sessionserver_lib)
+
+add_executable(sessionserver_smoke servers/sessionserver/sessionserver_smoke.cpp)
+target_link_libraries(sessionserver_smoke PRIVATE sessionserver_lib)
+
+# AgentServer — fan-out #4: CAgentServer skeleton (client gateway, Field Server proxy)
+add_library(agentserver_lib STATIC servers/agentserver/agent_server.cpp)
+target_include_directories(agentserver_lib PUBLIC ${CMAKE_SOURCE_DIR}/servers/agentserver)
+target_link_libraries(agentserver_lib PUBLIC ran_net ran_db)
+
+add_executable(agentserver servers/agentserver/main.cpp)
+target_link_libraries(agentserver PRIVATE agentserver_lib)
+
+add_executable(agentserver_smoke servers/agentserver/agentserver_smoke.cpp)
+target_link_libraries(agentserver_smoke PRIVATE agentserver_lib)
+
+# FieldServer — fan-out #5: s_CFieldServer + GLGaeaServer skeleton (gameplay engine)
+add_library(fieldserver_lib STATIC servers/fieldserver/field_server.cpp)
+target_include_directories(fieldserver_lib PUBLIC ${CMAKE_SOURCE_DIR}/servers/fieldserver)
+target_link_libraries(fieldserver_lib PUBLIC ran_net ran_db)
+
+add_executable(fieldserver servers/fieldserver/main.cpp)
+target_link_libraries(fieldserver PRIVATE fieldserver_lib)
+
+add_executable(fieldserver_smoke servers/fieldserver/fieldserver_smoke.cpp)
+target_link_libraries(fieldserver_smoke PRIVATE fieldserver_lib)
