@@ -1,10 +1,9 @@
 #include "auth_server.h"
 
-#include <boost/asio/write.hpp>
+#include <vector>
 
 namespace sc { namespace servers {
 
-namespace asio = boost::asio;
 using tcp = boost::asio::ip::tcp;
 
 AuthServer::AuthServer(unsigned short port, std::string dbConn)
@@ -40,22 +39,53 @@ void AuthServer::OnStop() {
 }
 
 void AuthServer::OnAccept(tcp::socket sock) {
-    long n = ++m_accepted;
+    const uint32_t clientId = ++m_nextClientId;
+    ++m_accepted;
     boost::system::error_code ec;
     auto ep = sock.remote_endpoint(ec);
-    Log("client #" + std::to_string(n) + " connected" +
+    Log("client #" + std::to_string(clientId) + " connected" +
         (ec ? std::string() : " from " + ep.address().to_string()));
 
-    // TODO(fan-out follow-on): feed bytes to a ported MsgManager + dispatch through
-    // AuthPacketFunc (MsgAuthCertificationRequest -> CertificateAuthDataFromDB ...).
-    // Skeleton: greet + close so the connection path is observable end-to-end.
-    const std::string banner = "AUTHSERVER\n";
-    asio::write(sock, asio::buffer(banner), ec);
-    sock.shutdown(tcp::socket::shutdown_both, ec);
+    // Per-client Session (NetAuthClientMan slot): framed messages -> recv MsgManager
+    // Front queue; link-drop -> drop the session.
+    auto session = std::make_shared<sc::net::Session>(
+        std::move(sock), clientId,
+        [this](uint32_t /*id*/, sc::net::Message&& m) { m_recvMsgs.MsgQueueInsert(std::move(m)); },
+        [this](uint32_t id) {
+            std::lock_guard<std::mutex> lk(m_sessMx);
+            m_sessions.erase(id);
+        });
+    {
+        std::lock_guard<std::mutex> lk(m_sessMx);
+        m_sessions[clientId] = session;
+    }
+    session->Start();
 }
 
 void AuthServer::OnUpdate() {
-    ++m_updates;  // UpdateProc: would drain the recv MsgManager + run MsgProcess()
+    ++m_updates;
+    // UpdateProc: flip the double-buffer, then MsgProcess() each queued message.
+    m_recvMsgs.MsgQueueFlip();
+    sc::net::Message msg;
+    while (m_recvMsgs.GetMsg(msg)) dispatch(msg);
+}
+
+void AuthServer::dispatch(const sc::net::Message& msg) {
+    ++m_processed;
+    // TODO(follow-on): route via AuthPacketFunc (MsgAuthCertificationRequest ->
+    // CertificateAuthDataFromDB, session/event/server-state). Skeleton: echo the
+    // frame back to its sender so the full recv->process->send path is observable.
+    std::shared_ptr<sc::net::Session> session;
+    {
+        std::lock_guard<std::mutex> lk(m_sessMx);
+        auto it = m_sessions.find(msg.clientId);
+        if (it != m_sessions.end()) session = it->second;
+    }
+    if (session) {
+        auto framed = std::make_shared<std::vector<char>>(
+            sc::net::EncodeMessage(msg.type, msg.payload(), msg.payloadSize()));
+        session->Send(framed);
+    }
 }
 
 void AuthServer::OnRegularSchedule() {
