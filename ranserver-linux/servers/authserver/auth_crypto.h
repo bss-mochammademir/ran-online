@@ -5,20 +5,17 @@
 
 namespace sc { namespace servers {
 
-/**
- * Decrypts a hex-encoded cipher text string using RC5 CBC mode.
- * Key used: "3b59367098e946a4" (MD5 of "mincoms" first 16 bytes).
- * IV used: 0x01 (8 bytes).
- * Padding: PKCS#7.
- */
+// RC5-32/16/16 + CBC + PKCS#7, port of SigmaCore RC5EncryptA("mincoms").
+// Key  = first 16 chars of lowercase hex MD5("mincoms") = "0e0aa086965047fb".
+// IV   = 0x01 x 8 bytes. Cipher I/O is lowercase hex.
+// NOTE: round-trip self-tests pass regardless of key correctness — final
+// interop must be confirmed with a known-answer vector from a real client/server
+// sample (see runbook auth-cert-crypto.md).
+
+/** Decrypts a lowercase-hex RC5/CBC cipher text. Returns "" on failure. */
 std::string DecryptAuthData(const std::string& encryptedHex);
 
-/**
- * Encrypts a plain text string using RC5 CBC mode and returns a hex-encoded string.
- * Key used: "3b59367098e946a4".
- * IV used: 0x01 (8 bytes).
- * Padding: PKCS#7.
- */
+/** Encrypts plain text with RC5/CBC and returns lowercase-hex cipher text. */
 std::string EncryptAuthData(const std::string& plaintext);
 
 }} // namespace sc::servers

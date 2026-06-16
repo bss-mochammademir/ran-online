@@ -15,7 +15,7 @@ sequenceDiagram
 
     Note over Client: Enkripsi data auth via RC5<br/>"ServiceProvider,ServerType,IP,Port,UniqKey"
     Client->>Auth: Kirim NET_MSG_AUTH_CERTIFICATION_REQUEST (204)
-    Note over Auth: Dekripsi szAuthData menggunakan RC5 CBC<br/>(Key: "3b59367098e946a4", IV: 0x01)
+    Note over Auth: Dekripsi szAuthData menggunakan RC5 CBC<br/>(Key: "0e0aa086965047fb", IV: 0x01)
     Auth->>DB: EXEC sp_CertificationUniqKey
     DB-->>Auth: Hasil (SessionSvrID, Certification, UniqKey)
     Note over Auth: Enkripsi hasil via RC5 CBC<br/>"ServiceProvider,ServerType,IP,Port,NewUniqKey,Certification"
@@ -29,8 +29,8 @@ sequenceDiagram
 
 Karena ketidakcocokan kompilasi pustaka legacy Crypto++ 5.4 pada GCC modern di Linux (C++17), kami mengimplementasikan engine RC5-32/16/16 secara mandiri di [auth_crypto.cpp](file:///Users/mochammad.emir/Library/Mobile%20Documents/com~apple%20CloudDocs/Code/ran-online/ranserver-linux/servers/authserver/auth_crypto.cpp).
 
-* **Password**: `"mincoms"`
-* **MD5 key**: `"3b59367098e946a4"` (16-byte pertama dari MD5 hex string `"3b59367098e946a489115f5d601b38f8"`).
+* **Password**: `"mincoms"` (= "Min Communications", konstruktor `CGlobalAuthManager() : RC5EncryptA("mincoms")`).
+* **MD5 key**: `"0e0aa086965047fb"` — 16 char **pertama** dari hex MD5("mincoms") lowercase = `0e0aa086965047fbf83b0be88d373673`. Faithful ke `RC5EncryptA` (`SigmaCore/Encrypt/RC5Encrypt.cpp:177`): `m_key = getMd5A("mincoms")[:16]`, `getMd5A` mengembalikan string hex 32-char (default `CHash` lowercase). ⚠️ **Koreksi 2026-06-16**: nilai sebelumnya `"3b59367098e946a4"` (dan MD5 lengkap `3b59...38f8`) adalah **halusinasi** — tidak cocok MD5 sebenarnya. Lolosnya smoke karena round-trip pakai key sama; **belum** terkonfirmasi interop tanpa known-answer vector dari sampel client/server nyata.
 * **IV**: `0x01` 8-byte (`01 01 01 01 01 01 01 01`).
 * **Padding**: Standard PKCS#7 (blok kelipatan 8 byte).
 
