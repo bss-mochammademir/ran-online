@@ -83,7 +83,7 @@ Klien kirim `kMsgAuthCertReq` payload `0;1;127.0.0.1;9101;GOODKEY;0` → dispatc
 > **A. `GlobalAuthManager`** (kripto `szAuthData` encode/decode) + struktur wire `NET_AUTH_CERTIFICATION_REQUEST/ANS` → cert nyata penuh. → **Opus**, gate manusia (keamanan).
 > **B. msgpack + CRC** (`NET_MSG_GCTRL`) → `SendCountryAccessApprove` + balasan kontrol lain.
 > **C. Envelope LZO** (`NET_COMPRESS`/`CMinLzo`) → kompat klien terkompresi.
-> **D. Fan-out 4 server lain** (Login/Agent/Session/Field) — mekanik. → **Sonnet**.
+> **D. Fan-out 4 server lain** ✅ selesai di `feat/server-fanout-remaining` — lihat [server-fanout-remaining.md](server-fanout-remaining.md).
 
 ## Kesimpulan
 Operasi DB sertifikasi `ProcessCertificationForAuth` **ter-port verbatim & berjalan end-to-end** lewat pipeline paket + jalur tulis param + jalur baca result-set — irisan vertikal pertama yang menyentuh semua lapisan yang di-port (paket, net, DB) sekaligus, pada SP nyata `sp_CertificationUniqKey`. Lapisan kripto/wire-struct/msgpack bersifat aditif di atas ini.
