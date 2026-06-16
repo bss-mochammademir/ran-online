@@ -14,6 +14,31 @@
 
 namespace sc { namespace servers {
 
+// Message type ids for the certification slice. Production values come from the
+// EMNET_MSG enum (NET_MSG_AUTH_CERTIFICATION_REQUEST/_ANS in s_NetGlobal.h); these
+// slice-local ids keep the smoke self-contained until that enum is mapped.
+constexpr uint32_t kMsgAuthCertReq = 0x0A01;
+constexpr uint32_t kMsgAuthCertAns = 0x0A02;
+
+// Inputs to dbo.sp_CertificationUniqKey. In production these fields are decrypted
+// from NET_AUTH_CERTIFICATION_REQUEST's G_AUTH_INFO.szAuthData by GlobalAuthManager
+// (that crypto is a deferred follow-on); the slice carries them in the payload.
+struct CertRequest {
+    int         country     = 0;
+    int         serverType  = 0;
+    std::string ip;
+    int         port        = 0;
+    std::string uniqKey;
+    int         isSessionSvr = 0;
+};
+// Result row from sp_CertificationUniqKey (read back as a result set).
+struct CertResult {
+    bool        ok           = false;
+    int         certification = 0;
+    int         sessionSvrId  = 0;
+    std::string newUniqKey;
+};
+
 // AuthServer — first fan-out server: the Linux port skeleton of CAuthServer
 // (RanLogicServer/Server/AuthServer.{h,cpp}), riding the two ported shared layers:
 //   * sc::net::NetServer  (IOCP -> boost::asio lifecycle base)
@@ -44,8 +69,14 @@ protected:
     void OnUpdate() override;           // UpdateProc: flip recv queue + MsgProcess
     void OnRegularSchedule() override;  // RegularScheduleProc tick (stub)
 
+    // Verbatim port of AdoManager::ProcessCertificationForAuth (cert DB op): the
+    // exact param sequence + EXEC dbo.sp_CertificationUniqKey + result-set read,
+    // now over OdbcDb (write-path params + read-path GetCollect). Called from the
+    // serialized update tick, so the single m_db connection is not contended.
+    bool ProcessCertificationForAuth(const CertRequest& req, CertResult& out);
+
 private:
-    void dispatch(const sc::net::Message& msg);   // MsgProcess() stub (echo)
+    void dispatch(const sc::net::Message& msg);   // MsgProcess(): route by type
 
     std::string       m_dbConn;
     sc::db::OdbcDb    m_db;             // touched only in OnStart for now (single-thread);
