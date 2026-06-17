@@ -394,6 +394,7 @@ Jawaban langsung untuk "apa yang perlu kita persiapkan selanjutnya" — dipriori
    - **ADR-004** Event bus / streaming.
    - **ADR-005** Penempatan Mesin Indeks Pasar (in-core vs service).
    - **ADR-006** Tier biaya arena & strategi scale-to-zero.
+   - **ADR-007** ✅ *Accepted* — [Strategi bahasa polyglot](adr/ADR-007-polyglot-language-strategy.md): port C++ untuk core legacy (Gaea/Agent), Go (default) untuk servis greenfield; batas bahasa = batas servis; **dilarang** rewrite Gaea.
 9. **Gap assessment POJK 11/2022** (data residency, audit, least privilege, AML top-up) — checklist formal.
 10. Desain skema **Ledger multi-mata-uang** & kontrak event ekonomi (pondasi Fase 3).
 
