@@ -24,8 +24,12 @@ enum EM_LOGIN_FB_SUB {
     EM_LOGIN_FB_SUB_IP_BAN         = 6,
     EM_LOGIN_FB_SUB_BLOCK          = 7,
     EM_LOGIN_FB_CH_FULL            = 15,
+    EM_LOGIN_FB_SUB_RANDOM_PASS    = 19,   // gs_user_verify return 7
     EM_LOGIN_FB_SUB_ALREADYOFFLINE = 21,
+    EM_LOGIN_FB_SUB_BETAKEY        = 23,   // gs_user_verify return 23 (GS_PARAM)
     EM_LOGIN_FB_WRONG_SP           = 25,
+    EM_LOGIN_FB_KR_OK_USE_PASS     = 27,   // success + existing 2nd password (return 31)
+    EM_LOGIN_FB_KR_OK_NEW_PASS     = 28,   // success + new 2nd password (return 30)
 };
 
 // Request packet from client

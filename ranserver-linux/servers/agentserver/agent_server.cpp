@@ -126,17 +126,28 @@ bool AgentServer::ProcessUserLogin(const std::string& username, const std::strin
         return false;
     }
 
-    if (nResult != 2 && nResult != 3) {
-        // Map SP return code to EM_LOGIN_FB_SUB
-        if (nResult == 0) errCode = EM_LOGIN_FB_SUB_INCORRECT;
-        else if (nResult == 4) errCode = EM_LOGIN_FB_SUB_IP_BAN;
-        else if (nResult == 5) errCode = EM_LOGIN_FB_SUB_DUP;
-        else if (nResult == 6) errCode = EM_LOGIN_FB_SUB_BLOCK;
-        else errCode = EM_LOGIN_FB_SUB_FAIL;
-        return false;
+    // Map gs_user_verify's return code to EM_LOGIN_FB_SUB, faithful to
+    // CAgentGsUserCheck::Execute (RanLogicServer/Database/DBAction/DbActionUser.cpp).
+    // Login success (fetch user info) = {1,2,3,30,31}; 30/31 also flag a 2nd-password
+    // requirement (that sub-flow is a deferred follow-on). NOTE: the "+10 Return of
+    // Hero" codes (11/12/13/40/41) belong to the DAUM path (daum_user_verify_new),
+    // NOT gs_user_verify — they are intentionally absent here.
+    bool loggedIn = false;
+    switch (nResult) {
+        case 1: case 2: case 3: errCode = EM_LOGIN_FB_SUB_OK;          loggedIn = true; break;
+        case 30:                errCode = EM_LOGIN_FB_KR_OK_NEW_PASS;  loggedIn = true; break;  // + new 2nd pass (deferred)
+        case 31:                errCode = EM_LOGIN_FB_KR_OK_USE_PASS;  loggedIn = true; break;  // + existing 2nd pass (deferred)
+        case 0:                 errCode = EM_LOGIN_FB_SUB_INCORRECT;   break;
+        case 4:                 errCode = EM_LOGIN_FB_SUB_IP_BAN;      break;
+        case 5:                 errCode = EM_LOGIN_FB_SUB_DUP;         break;
+        case 6:                 errCode = EM_LOGIN_FB_SUB_BLOCK;       break;
+        case 7:                 errCode = EM_LOGIN_FB_SUB_RANDOM_PASS; break;
+        case 23:                errCode = EM_LOGIN_FB_SUB_BETAKEY;     break;
+        default:                errCode = EM_LOGIN_FB_SUB_FAIL;        break;
     }
+    if (!loggedIn) return false;
 
-    // Login SP succeeded -> Retrieve user info from GSUserInfo
+    // Login succeeded -> retrieve user info from GSUserInfo (mirrors GsGetUserInfo)
     // Safely construct simple alphanumeric query
     std::string cleanUser = "";
     for (char c : username) {
@@ -171,7 +182,7 @@ bool AgentServer::ProcessUserLogin(const std::string& username, const std::strin
     m_db.GetCollect("ChatBlockDate", chatBlockDate);
     m_db.GetCollect("LastLoginDate", lastLoginDate);
 
-    errCode = EM_LOGIN_FB_SUB_OK;
+    // errCode already set by the switch above (OK for 1/2/3; KR_OK_* for 30/31) — keep it.
     return true;
 }
 
