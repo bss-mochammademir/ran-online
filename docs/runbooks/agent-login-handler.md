@@ -13,7 +13,23 @@
 2. **Verifikasi Kredensial**:
    * Memanggil stored procedure `dbo.gs_user_verify` pada database `RanUser` menggunakan wrapper thread-safe `m_dbMx`.
    * Input stored procedure: `UserID`, `UserPass`, `UserIP`, `ServerGroup`, `ServerNumber`.
-   * Stored procedure mengembalikan kode hasil (`result`). Jika bernilai `2` (Success) atau `3` (Success with VIP), proses dilanjutkan.
+   * Stored procedure mengembalikan kode hasil (`nResult`), **dipetakan ke `EM_LOGIN_FB_SUB`** persis seperti `CAgentGsUserCheck::Execute` ([`RanLogicServer/Database/DBAction/DbActionUser.cpp`](file:///Users/mochammad.emir/Library/Mobile%20Documents/com~apple%20CloudDocs/Code/ran-online/RanLogicServer/Database/DBAction/DbActionUser.cpp)) — sumber otoritatif jalur GS/IDN (`COdbcManager::GsUserCheck` mengembalikan return SP mentah, lalu DbAction inilah yang memetakannya):
+
+   | `nResult` SP | `EM_LOGIN_FB_SUB` | Arti |
+   | :---: | :--- | :--- |
+   | -1 | `SYSTEM` | error DB |
+   | 0 | `INCORRECT` | ID/PWD salah |
+   | **1, 2, 3** | **`OK`** | **login sukses** |
+   | **30** | `KR_OK_NEW_PASS` | sukses + perlu 2nd-pass baru *(sub-flow ditangguhkan)* |
+   | **31** | `KR_OK_USE_PASS` | sukses + 2nd-pass ada *(sub-flow ditangguhkan)* |
+   | 4 | `IP_BAN` | IP diblok |
+   | 5 | `DUP` | login ganda |
+   | 6 | `BLOCK` | akun diblok |
+   | 7 | `RANDOM_PASS` | perlu random password |
+   | 23 | `BETAKEY` | beta key (GS_PARAM) |
+   | lainnya | `FAIL` | gagal umum |
+
+   > ⚠️ **Koreksi 2026-06-16**: versi awal hanya menganggap `{2,3}` sukses → menolak login sah **kode 1 dan 30/31** (state 2nd-password) serta salah-memetakan 7/23. **Catatan penting**: kode "+10 Return of Hero" (`11/12/13/40/41`) itu **khusus jalur DAUM** (`daum_user_verify_new` di `s_COdbcUserCheck.cpp`), **bukan** `gs_user_verify` — sengaja TIDAK ada di mapping ini.
 
 3. **Pengambilan Metrik Karakter**:
    * Jika verifikasi kredensial sukses, query dilakukan ke tabel `dbo.GSUserInfo` untuk membaca metrik pengguna seperti `IsUse2ndPass` (Secondary PIN check) dan jumlah karakter tersisa (`ChaRemain`).
