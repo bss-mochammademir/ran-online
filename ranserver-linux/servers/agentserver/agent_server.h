@@ -13,6 +13,7 @@
 #include "session.h"
 #include "odbc_db.h"
 #include "agent_server_msg.h"
+#include "char_lobby.h"
 
 namespace sc { namespace servers {
 
@@ -52,6 +53,12 @@ private:
     // Query dbo.sp_ChaListAgent(@UserNum, @ServerGroup) and fill charNums.
     // Must be called with m_dbMx held by the caller.
     bool ProcessCharList(int userNum, std::vector<int>& charNums);
+
+    // Query dbo.sp_GetChaLobbyInfo(@UserNum, @ChaNum) and fill out for the
+    // char-select detail card. Must be called with m_dbMx held by the caller.
+    // Equipment (m_PutOnItems) left as SLOT_TSIZE empties — populating it needs
+    // the item subsystem (ItemSelect/INVEN_PUTON), a deferred follow-on.
+    bool ProcessCharDetail(int userNum, int chaNum, CharInfoLobby& out);
 
     // Per-client state set on successful login (mirrors CClientManager::UserDbNum).
     // Protected by m_sessMx (reuses the session map lock).

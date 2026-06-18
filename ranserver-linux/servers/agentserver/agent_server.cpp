@@ -296,16 +296,63 @@ void AgentServer::dispatch(const sc::net::Message& msg) {
     }
 
     if (msg.type == NET_MSG_REQ_CHA_BINFO_CA) {
-        // Client requests lobby detail for one character (equipment, stats, etc.).
-        // Source: CAgentServer::MsgSndChaBasicInfo -> dbo.sp_GetChaLobbyInfo.
-        // Full port deferred: SCHARINFO_LOBBY (msgpack) is very large.
-        // TODO: query sp_GetChaLobbyInfo and pack NET_MSG_LOBBY_CHARINFO_AC.
-        if (msg.payloadSize() >= sizeof(NET_CHA_BA_INFO_CA_DATA) - sc::net::kHeaderSize) {
-            const NET_CHA_BA_INFO_CA_DATA* req =
-                reinterpret_cast<const NET_CHA_BA_INFO_CA_DATA*>(msg.bytes.data());
-            Log("NET_MSG_REQ_CHA_BINFO_CA: char detail for ChaDbNum=" +
-                std::to_string(req->m_ChaDbNum) + " deferred (full port TODO)");
+        // Client requests lobby detail for one character (stats, appearance,
+        // club). Source: CAgentServer::MsgSndChaBasicInfo -> sp_GetChaLobbyInfo
+        // -> NET_LOBBY_CHARINFO_AC (msgpack), followed by *_AC_END.
+        if (msg.payloadSize() < sizeof(NET_CHA_BA_INFO_CA_DATA) - sc::net::kHeaderSize) {
+            Log("NET_MSG_REQ_CHA_BINFO_CA: short payload");
+            return;
         }
+        const NET_CHA_BA_INFO_CA_DATA* req =
+            reinterpret_cast<const NET_CHA_BA_INFO_CA_DATA*>(msg.bytes.data());
+        const int chaNum = req->m_ChaDbNum;
+        if (chaNum <= 0) return; // hacking guard (mirrors MsgSndChaBasicInfo)
+
+        int userNum = 0;
+        {
+            std::lock_guard<std::mutex> lk(m_sessMx);
+            auto it = m_loginSessions.find(msg.clientId);
+            if (it != m_loginSessions.end()) userNum = it->second.userNum;
+        }
+        if (userNum <= 0) { session->Close(); return; }
+
+        CharInfoLobby detail;
+        bool ok = false;
+        {
+            std::lock_guard<std::mutex> lk(m_dbMx);
+            if (m_dbReady.load()) ok = ProcessCharDetail(userNum, chaNum, detail);
+        }
+        if (!ok) {
+            Log("NET_MSG_REQ_CHA_BINFO_CA: detail fetch failed chaNum=" +
+                std::to_string(chaNum));
+            return;
+        }
+
+        // Pack NET_LOBBY_CHARINFO_AC (msgpack array[1]{SCHARINFO_LOBBY}) into the
+        // NET_MSG_PACK envelope body: m_Crc(0) + m_DataSize + msgpack bytes.
+        std::vector<char> mpbuf;
+        { sc::mp::Packer p(mpbuf); PackLobbyCharInfoAc(p, detail); }
+
+        std::vector<char> body;
+        body.reserve(8 + mpbuf.size());
+        const uint32_t crc = 0;
+        const uint32_t dataSize = static_cast<uint32_t>(mpbuf.size());
+        body.insert(body.end(), reinterpret_cast<const char*>(&crc),
+                    reinterpret_cast<const char*>(&crc) + 4);
+        body.insert(body.end(), reinterpret_cast<const char*>(&dataSize),
+                    reinterpret_cast<const char*>(&dataSize) + 4);
+        body.insert(body.end(), mpbuf.begin(), mpbuf.end());
+
+        Log("Char detail chaNum=" + std::to_string(chaNum) + " name=" + detail.m_ChaName +
+            " lvl=" + std::to_string(detail.m_wLevel) + " (" + std::to_string(mpbuf.size()) +
+            "B msgpack)");
+
+        session->Send(std::make_shared<std::vector<char>>(
+            sc::net::EncodeMessage(NET_MSG_LOBBY_CHARINFO_AC, body.data(), body.size())));
+
+        // End-of-stream marker (NET_MSG_LOBBY_CHARINFO_AC_END, header-only).
+        session->Send(std::make_shared<std::vector<char>>(
+            sc::net::EncodeMessage(NET_MSG_LOBBY_CHARINFO_AC_END, nullptr, 0)));
         return;
     }
 
@@ -331,6 +378,53 @@ bool AgentServer::ProcessCharList(int userNum, std::vector<int>& charNums) {
         if (chaNum > 0) charNums.push_back(chaNum);
         m_db.Next();
     }
+    return true;
+}
+
+bool AgentServer::ProcessCharDetail(int userNum, int chaNum, CharInfoLobby& out) {
+    // Must be called with m_dbMx held.
+    // Mirrors AdoManager::GetChaBInfo: dbo.sp_GetChaLobbyInfo(@UserNum, @ChaNum)
+    // returns exactly one row of lobby-display columns.
+    m_db.ClearParams();
+    m_db.AppendIParamInteger("@UserNum", userNum);
+    m_db.AppendIParamInteger("@ChaNum", chaNum);
+    if (!m_db.ExecuteStoredProcedure("dbo.sp_GetChaLobbyInfo")) {
+        Log("ProcessCharDetail: sp_GetChaLobbyInfo failed: " + m_db.LastError());
+        return false;
+    }
+    if (m_db.GetEOF()) {
+        Log("ProcessCharDetail: no row for chaNum=" + std::to_string(chaNum));
+        return false;
+    }
+
+    // Column mapping faithful to AdoManager::GetChaBInfo (AdoManagerGame.cpp).
+    out.m_dwCharID = static_cast<uint32_t>(chaNum);
+    int tmp = 0;
+    m_db.GetCollect("GuNum",        tmp); out.m_ClubDbNum  = static_cast<uint32_t>(tmp);
+    m_db.GetCollect("ChaName",      out.m_ChaName);
+    m_db.GetCollect("ChaClass",     tmp); out.m_emClass    = static_cast<uint32_t>(tmp);
+    m_db.GetCollect("ChaSchool",    tmp); out.m_wSchool    = static_cast<uint16_t>(tmp);
+    m_db.GetCollect("ChaDex",       tmp); out.m_sStats.wDex = static_cast<uint16_t>(tmp);
+    m_db.GetCollect("ChaIntel",     tmp); out.m_sStats.wInt = static_cast<uint16_t>(tmp);
+    m_db.GetCollect("ChaPower",     tmp); out.m_sStats.wPow = static_cast<uint16_t>(tmp);
+    m_db.GetCollect("ChaStrong",    tmp); out.m_sStats.wStr = static_cast<uint16_t>(tmp);
+    m_db.GetCollect("ChaSpirit",    tmp); out.m_sStats.wSpi = static_cast<uint16_t>(tmp);
+    m_db.GetCollect("ChaStrength",  tmp); out.m_sStats.wSta = static_cast<uint16_t>(tmp);
+    m_db.GetCollect("ChaLevel",     tmp); out.m_wLevel     = static_cast<uint16_t>(tmp);
+    m_db.GetCollect("ChaHair",      tmp); out.m_wHair      = static_cast<uint16_t>(tmp);
+    m_db.GetCollect("ChaFace",      tmp); out.m_wFace      = static_cast<uint16_t>(tmp);
+    m_db.GetCollect("ChaBright",    out.m_nBright);
+    m_db.GetCollect("ChaSex",       tmp); out.m_wSex       = static_cast<uint16_t>(tmp);
+    m_db.GetCollect("ChaHairColor", tmp); out.m_wHairColor = static_cast<uint16_t>(tmp);
+    long long expNow = 0;
+    m_db.GetCollect("ChaExp",       expNow); out.m_sExperience.lnData1 = expNow;
+    // m_sExperience.lnData2 (next-level exp) computed client-side via GLNEEDEXP — left 0.
+    m_db.GetCollect("ChaSaveMap",   tmp); out.m_sSaveMapID.dwID = static_cast<uint32_t>(tmp);
+    int hpNow = 0;
+    m_db.GetCollect("ChaHP",        hpNow); out.m_sHP.dwData = static_cast<uint32_t>(hpNow & 0xFFFF);
+    int chaLock = 0;
+    m_db.GetCollect("ChaLock",      chaLock); out.m_Lock = (chaLock != 0);
+    // m_PutOnItems left as SLOT_TSIZE empties (equipment query deferred).
     return true;
 }
 

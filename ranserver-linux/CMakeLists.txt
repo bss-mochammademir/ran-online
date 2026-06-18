@@ -49,6 +49,7 @@ add_library(ran_net STATIC
     net/packet.cpp        # NET_MSG_GENERIC framing (RanLogic/s_NetGlobal.h)
     net/session.cpp       # per-connection async read loop
     net/minlzo.cpp        # LZO wrapper
+    net/msgpack_min.cpp   # self-contained MessagePack encoder (msgpack-c vintage is C++17-incompatible)
     net/send_msg_buffer.cpp) # Output compression buffer
 target_include_directories(ran_net PUBLIC ${CMAKE_SOURCE_DIR}/net ${Boost_INCLUDE_DIRS}
     PRIVATE ${CMAKE_SOURCE_DIR}/../XLib_lzo/include)
@@ -61,6 +62,10 @@ target_link_libraries(packet_smoke PRIVATE ran_net)
 # LZO Smoke test
 add_executable(lzo_smoke net/lzo_smoke.cpp)
 target_link_libraries(lzo_smoke PRIVATE ran_net)
+
+# MessagePack encoder golden-vector smoke (validated against Python `msgpack`).
+add_executable(msgpack_min_smoke net/msgpack_min_smoke.cpp)
+target_link_libraries(msgpack_min_smoke PRIVATE ran_net)
 
 
 # ---- Fan-out: per-server targets, each riding the shared net/db layers ----------
