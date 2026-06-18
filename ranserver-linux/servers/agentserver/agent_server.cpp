@@ -238,9 +238,12 @@ void AgentServer::dispatch(const sc::net::Message& msg) {
             if (success) {
                 fb.m_ChaRemain = chaRemain;
                 fb.m_Country = 0;
-                // store userNum so subsequent char-list requests can use it
+                // store userNum + PIN-pending flag so subsequent requests can use them
+                int use2nd = 0;
+                if (errCode == EM_LOGIN_FB_KR_OK_USE_PASS) use2nd = 1; // verify existing PIN
+                if (errCode == EM_LOGIN_FB_KR_OK_NEW_PASS) use2nd = 2; // set new PIN
                 std::lock_guard<std::mutex> lk(m_sessMx);
-                m_loginSessions[msg.clientId] = LoginSession{userNum, userType};
+                m_loginSessions[msg.clientId] = LoginSession{userNum, userType, use2nd};
             }
         }
 
@@ -356,6 +359,74 @@ void AgentServer::dispatch(const sc::net::Message& msg) {
         return;
     }
 
+    if (msg.type == DAUM_NET_MSG_PASSCHECK) {
+        // Client sends the PIN/2nd-password for verification after server returned
+        // EM_LOGIN_FB_KR_OK_USE_PASS (31) or EM_LOGIN_FB_KR_OK_NEW_PASS (30).
+        // Source: CAgentServer::DaumMsgPassCheck (AgentServerMsgLogin.cpp).
+        constexpr std::size_t kMinPayload =
+            sizeof(DAUM_NET_PASSCHECK_DATA) - sc::net::kHeaderSize;
+        if (msg.payloadSize() < kMinPayload) {
+            Log("DAUM_NET_MSG_PASSCHECK: short payload from client #" +
+                std::to_string(msg.clientId));
+            return;
+        }
+        const DAUM_NET_PASSCHECK_DATA* req =
+            reinterpret_cast<const DAUM_NET_PASSCHECK_DATA*>(msg.bytes.data());
+
+        std::string userId(req->szDaumGID,
+            std::min<size_t>(std::strlen(req->szDaumGID), 20u));
+        std::string pin(req->szUserPass,
+            std::min<size_t>(std::strlen(req->szUserPass), 20u));
+        const int checkFlag = req->nCheckFlag;
+
+        // Verify PIN state matches what was set at login.
+        int use2nd = 0;
+        {
+            std::lock_guard<std::mutex> lk(m_sessMx);
+            auto it = m_loginSessions.find(msg.clientId);
+            if (it != m_loginSessions.end()) use2nd = it->second.use2ndPass;
+        }
+        if (use2nd == 0) {
+            Log("DAUM_NET_MSG_PASSCHECK: no pending 2nd-pass for client #" +
+                std::to_string(msg.clientId) + " — ignoring");
+            return;
+        }
+
+        int spResult = 0;
+        bool ok = false;
+        {
+            std::lock_guard<std::mutex> lk(m_dbMx);
+            if (m_dbReady.load()) ok = ProcessPassCheck(userId, pin, checkFlag, spResult);
+        }
+
+        NET_PASSCHECK_FEEDBACK_DATA fb{};
+        fb.dwSize  = sizeof(NET_PASSCHECK_FEEDBACK_DATA);
+        fb.nType   = NET_MSG_PASSCHECK_FB;
+        fb.nClient = static_cast<int32_t>(msg.clientId);
+        if (!ok) {
+            fb.nResult = static_cast<uint16_t>(EM_LOGIN_FB_SUB_FAIL);
+        } else if (spResult == 0) {
+            fb.nResult = static_cast<uint16_t>(EM_LOGIN_FB_SUB_OK);
+            // PIN accepted — clear the pending flag
+            std::lock_guard<std::mutex> lk(m_sessMx);
+            auto it = m_loginSessions.find(msg.clientId);
+            if (it != m_loginSessions.end()) it->second.use2ndPass = 0;
+        } else if (spResult == 2) {
+            fb.nResult = static_cast<uint16_t>(EM_LOGIN_FB_SUB_PASS_OK);
+        } else {
+            fb.nResult = static_cast<uint16_t>(EM_LOGIN_FB_SUB_FAIL);
+        }
+
+        Log("PIN check for [" + userId + "] flag=" + std::to_string(checkFlag) +
+            " sp=" + std::to_string(spResult) + " -> result=" + std::to_string(fb.nResult));
+
+        session->Send(std::make_shared<std::vector<char>>(
+            sc::net::EncodeMessage(NET_MSG_PASSCHECK_FB,
+                                   &fb.nClient,
+                                   sizeof(NET_PASSCHECK_FEEDBACK_DATA) - sc::net::kHeaderSize)));
+        return;
+    }
+
     // echo back until handlers are ported (field routing, anti-cheat)
     session->Send(std::make_shared<std::vector<char>>(
         sc::net::EncodeMessage(msg.type, msg.payload(), msg.payloadSize())));
@@ -425,6 +496,33 @@ bool AgentServer::ProcessCharDetail(int userNum, int chaNum, CharInfoLobby& out)
     int chaLock = 0;
     m_db.GetCollect("ChaLock",      chaLock); out.m_Lock = (chaLock != 0);
     // m_PutOnItems left as SLOT_TSIZE empties (equipment query deferred).
+    return true;
+}
+
+bool AgentServer::ProcessPassCheck(const std::string& userId, const std::string& pin,
+                                    int checkFlag, int& result) {
+    // Must be called with m_dbMx held.
+    // Mirrors AdoManager::DaumUserPassCheck -> dbo.daum_user_passcheck.
+    // SP returns: 0=PIN ok, 1=wrong PIN, 2=initial-PIN-set ok.
+    // The SP uses an OUTPUT parameter (not RETURN), so we try RETURN_VALUE first
+    // and fall back to the named output param — same belt-and-suspenders pattern
+    // as ProcessUserLogin.
+    m_db.ClearParams();
+    m_db.AppendRParamInteger();
+    m_db.AppendIParamVarchar("@szDaumGID",   userId, 20);
+    m_db.AppendIParamVarchar("@szDaumPasswd", pin,    20);
+    m_db.AppendIParamInteger("@nCheckFlag",  checkFlag);
+    m_db.AppendOParamInteger("@nReturn");
+    if (!m_db.ExecuteStoredProcedure("dbo.daum_user_passcheck")) {
+        Log("ProcessPassCheck: daum_user_passcheck failed: " + m_db.LastError());
+        return false;
+    }
+    int rv = 0;
+    if (!m_db.GetParam("RETURN_VALUE", rv) || rv == 0) {
+        // SP may use OUTPUT rather than RETURN — try output param
+        m_db.GetParam("@nReturn", rv);
+    }
+    result = rv;
     return true;
 }
 
