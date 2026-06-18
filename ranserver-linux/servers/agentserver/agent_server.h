@@ -50,6 +50,12 @@ private:
                          std::string& premiumDate, std::string& chatBlockDate, std::string& lastLoginDate,
                          int& errCode);
 
+    // Call dbo.daum_user_passcheck(@szDaumGID, @szDaumPasswd, @nCheckFlag) and
+    // return the SP result code (0=OK, 1=fail, 2=initial-pass-OK). Must be
+    // called with m_dbMx held. Source: CAgentDaumPassCheck::Execute (DbActionUser.cpp).
+    bool ProcessPassCheck(const std::string& userId, const std::string& pin,
+                          int checkFlag, int& result);
+
     // Query dbo.sp_ChaListAgent(@UserNum, @ServerGroup) and fill charNums.
     // Must be called with m_dbMx held by the caller.
     bool ProcessCharList(int userNum, std::vector<int>& charNums);
@@ -62,9 +68,12 @@ private:
 
     // Per-client state set on successful login (mirrors CClientManager::UserDbNum).
     // Protected by m_sessMx (reuses the session map lock).
+    // use2ndPass: 0=none, 1=verify existing PIN (gs_user_verify=31),
+    //             2=set new PIN (gs_user_verify=30).
     struct LoginSession {
-        int userNum  = 0;
-        int userType = 0;
+        int userNum    = 0;
+        int userType   = 0;
+        int use2ndPass = 0;
     };
 
     std::string       m_dbConn;

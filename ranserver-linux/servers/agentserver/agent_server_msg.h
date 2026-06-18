@@ -16,6 +16,8 @@ constexpr uint32_t NET_MSG_LOGIN_FB           = 223; // Agent->Client : login re
 constexpr uint32_t NET_MSG_REQ_CHA_BINFO_CA   = 283; // Client->Agent : request single char detail
 constexpr uint32_t NET_MSG_REQ_CHA_BAINFO     = 284; // Client->Agent : request char ID list
 constexpr uint32_t NET_MSG_CHA_BAINFO_AC      = 285; // Agent->Client : char ID list response
+constexpr uint32_t DAUM_NET_MSG_PASSCHECK         = 238; // Client->Agent : 2nd-password PIN check (Korea/GS path)
+constexpr uint32_t NET_MSG_PASSCHECK_FB           = 239; // Agent->Client : PIN check result
 constexpr uint32_t NET_MSG_LOBBY_CHARINFO_AC      = 298; // Agent->Client : char lobby detail (msgpack)
 constexpr uint32_t NET_MSG_LOBBY_CHARINFO_AC_END  = 299; // Agent->Client : end of char detail stream
 
@@ -51,6 +53,7 @@ enum EM_LOGIN_FB_SUB {
     EM_LOGIN_FB_SUB_BLOCK          = 7,
     EM_LOGIN_FB_CH_FULL            = 15,
     EM_LOGIN_FB_SUB_RANDOM_PASS    = 19,   // gs_user_verify return 7
+    EM_LOGIN_FB_SUB_PASS_OK        = 20,   // NET_MSG_PASSCHECK_FB: initial PIN set OK
     EM_LOGIN_FB_SUB_ALREADYOFFLINE = 21,
     EM_LOGIN_FB_SUB_BETAKEY        = 23,   // gs_user_verify return 23 (GS_PARAM)
     EM_LOGIN_FB_WRONG_SP           = 25,
@@ -84,6 +87,30 @@ struct NET_CHA_BAINFO_AC_DATA {
     uint32_t nType;
     int32_t  m_ChaServerTotalNum;
     int32_t  m_ChaDbNum[MAX_ONESERVERCHAR_NUM];
+};
+
+// ---- 2nd-password PIN check structs --------------------------------------------
+// Faithful to RanLogic/Msg/LoginMsg.h DAUM_NET_PASSCHECK_DATA / NET_PASSCHECK_FEEDBACK_DATA.
+// TCHAR fields are char (MBCS) for Linux builds.
+
+// Client->Agent : PIN verification request (DAUM_NET_MSG_PASSCHECK)
+// DAUM_MAX_GID_LENGTH=20, DAUM_USERPASS=20 (RanLogic/Network/NetLogicDefine.h)
+struct DAUM_NET_PASSCHECK_DATA {
+    uint32_t dwSize;
+    uint32_t nType;
+    char     szDaumGID[21];    // account username (NUL-terminated, max 20 chars)
+    char     szUserPass[21];   // PIN / 2nd-password (NUL-terminated, max 20 chars)
+    int32_t  nCheckFlag;       // 0=verify existing PIN, 1=set new PIN
+};
+
+// Agent->Client : PIN check result (NET_MSG_PASSCHECK_FB)
+// nResult: EM_LOGIN_FB_SUB_OK=0 (PIN ok), EM_LOGIN_FB_SUB_FAIL=1 (wrong),
+//          EM_LOGIN_FB_SUB_PASS_OK=20 (initial set accepted)
+struct NET_PASSCHECK_FEEDBACK_DATA {
+    uint32_t dwSize;
+    uint32_t nType;
+    int32_t  nClient;   // echoes clientId (mirrors NET_PASSCHECK_FEEDBACK_DATA::nClient)
+    uint16_t nResult;   // EM_LOGIN_FB_SUB value
 };
 
 // ---- Login request packet from client ------------------------------------------
