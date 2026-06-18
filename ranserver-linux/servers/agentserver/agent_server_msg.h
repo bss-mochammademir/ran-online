@@ -5,8 +5,16 @@
 
 namespace sc { namespace servers {
 
-constexpr uint32_t IDN_NET_MSG_LOGIN = 233;
-constexpr uint32_t NET_MSG_LOGIN_FB  = 223;
+constexpr uint32_t IDN_NET_MSG_LOGIN      = 233; // Client->Agent : IDN login request
+constexpr uint32_t NET_MSG_LOGIN_FB       = 223; // Agent->Client : login result
+constexpr uint32_t NET_MSG_REQ_CHA_BINFO_CA = 279; // Client->Agent : request single char detail
+constexpr uint32_t NET_MSG_REQ_CHA_BAINFO   = 280; // Client->Agent : request char ID list
+constexpr uint32_t NET_MSG_CHA_BAINFO_AC    = 281; // Agent->Client : char ID list response
+
+// CAgentGsUserCheck; s_NetGlobal.h verified: shuffle disabled, sequential values.
+// NET_MSG_REQ_CHA_BINFO_CA=279, NET_MSG_REQ_CHA_BAINFO=280, NET_MSG_CHA_BAINFO_AC=281
+
+constexpr int MAX_ONESERVERCHAR_NUM = 30; // per RanLogic/Network/NetLogicDefine.h
 
 #define USR_ID_LENGTH       20
 #define MD5_MAX_LENGTH      32
@@ -32,6 +40,35 @@ enum EM_LOGIN_FB_SUB {
     EM_LOGIN_FB_KR_OK_NEW_PASS     = 28,   // success + new 2nd password (return 30)
 };
 
+// ---- Character list wire structs -----------------------------------------------
+// Faithful to s_NetGlobal.h NET_CHA_REQ_BA_INFO / NET_CHA_BA_INFO_CA /
+// Msg/ServerMsg.h NET_CHA_BBA_INFO_AC.  All LE, no alignment padding assumed.
+
+// Client->Agent : request character ID list (NET_MSG_REQ_CHA_BAINFO)
+struct NET_CHA_REQ_BAINFO_DATA {
+    uint32_t dwSize;
+    uint32_t nType;
+    int32_t  m_LauncherVer;
+    int32_t  m_PatchVer;
+    uint32_t m_Crc;
+};
+
+// Client->Agent : request single character detail (NET_MSG_REQ_CHA_BINFO_CA)
+struct NET_CHA_BA_INFO_CA_DATA {
+    uint32_t dwSize;
+    uint32_t nType;
+    int32_t  m_ChaDbNum;
+};
+
+// Agent->Client : character ID list response (NET_MSG_CHA_BAINFO_AC)
+struct NET_CHA_BAINFO_AC_DATA {
+    uint32_t dwSize;
+    uint32_t nType;
+    int32_t  m_ChaServerTotalNum;
+    int32_t  m_ChaDbNum[MAX_ONESERVERCHAR_NUM];
+};
+
+// ---- Login request packet from client ------------------------------------------
 // Request packet from client
 struct IDN_NET_LOGIN_DATA {
     uint32_t dwSize;     // 8-byte header part 1

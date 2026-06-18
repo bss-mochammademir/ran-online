@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(ranserver_linux LANGUAGES CXX)
+project(ranserver_linux LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -8,6 +8,9 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 find_package(Boost REQUIRED)            # boost::asio (header-only) include dirs
 find_package(Threads REQUIRED)          # io_context worker threads
 find_library(ODBC_LIB odbc REQUIRED)    # unixODBC -> msodbcsql18 at runtime
+find_path(ODBC_INCLUDE_DIR sql.h
+    PATHS /opt/homebrew/include /usr/include /usr/local/include
+    REQUIRED)
 
 # Foundation smoke target — the template each server port will follow.
 add_executable(foundation_smoke src/foundation_smoke.cpp)
@@ -18,7 +21,7 @@ target_link_libraries(foundation_smoke PRIVATE ${ODBC_LIB} Threads::Threads)
 
 # DB layer — ODBC port of the core CjADO read path (Spike #1). Needs only ODBC.
 add_library(ran_db STATIC db/odbc_db.cpp)
-target_include_directories(ran_db PUBLIC ${CMAKE_SOURCE_DIR}/db)
+target_include_directories(ran_db PUBLIC ${CMAKE_SOURCE_DIR}/db ${ODBC_INCLUDE_DIR})
 target_link_libraries(ran_db PUBLIC ${ODBC_LIB})
 
 add_executable(db_smoke db/db_smoke.cpp)
@@ -47,7 +50,8 @@ add_library(ran_net STATIC
     net/session.cpp       # per-connection async read loop
     net/minlzo.cpp        # LZO wrapper
     net/send_msg_buffer.cpp) # Output compression buffer
-target_include_directories(ran_net PUBLIC ${CMAKE_SOURCE_DIR}/net ${Boost_INCLUDE_DIRS})
+target_include_directories(ran_net PUBLIC ${CMAKE_SOURCE_DIR}/net ${Boost_INCLUDE_DIRS}
+    PRIVATE ${CMAKE_SOURCE_DIR}/../XLib_lzo/include)
 target_link_libraries(ran_net PUBLIC Threads::Threads ran_lzo)
 
 # Packet codec unit smoke (no sockets): framing + MsgManager double-buffer.

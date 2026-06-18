@@ -7,6 +7,7 @@
 #include <mutex>
 #include <string>
 #include <unordered_map>
+#include <vector>
 #include "net_server.h"
 #include "msg_manager.h"
 #include "session.h"
@@ -48,6 +49,17 @@ private:
                          std::string& premiumDate, std::string& chatBlockDate, std::string& lastLoginDate,
                          int& errCode);
 
+    // Query dbo.sp_ChaListAgent(@UserNum, @ServerGroup) and fill charNums.
+    // Must be called with m_dbMx held by the caller.
+    bool ProcessCharList(int userNum, std::vector<int>& charNums);
+
+    // Per-client state set on successful login (mirrors CClientManager::UserDbNum).
+    // Protected by m_sessMx (reuses the session map lock).
+    struct LoginSession {
+        int userNum  = 0;
+        int userType = 0;
+    };
+
     std::string       m_dbConn;
     sc::db::OdbcDb    m_db;
     std::mutex        m_dbMx;
@@ -60,6 +72,7 @@ private:
     std::atomic<uint32_t> m_nextClientId{0};
     std::mutex m_sessMx;
     std::unordered_map<uint32_t, std::shared_ptr<sc::net::Session>> m_sessions;
+    std::unordered_map<uint32_t, LoginSession> m_loginSessions; // keyed by clientId
 };
 
 }} // namespace sc::servers

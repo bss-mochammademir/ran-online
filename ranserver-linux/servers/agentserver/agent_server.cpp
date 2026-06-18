@@ -58,6 +58,7 @@ void AgentServer::OnAccept(tcp::socket sock) {
         [this](uint32_t id) {
             std::lock_guard<std::mutex> lk(m_sessMx);
             m_sessions.erase(id);
+            m_loginSessions.erase(id);
         });
     {
         std::lock_guard<std::mutex> lk(m_sessMx);
@@ -237,6 +238,9 @@ void AgentServer::dispatch(const sc::net::Message& msg) {
             if (success) {
                 fb.m_ChaRemain = chaRemain;
                 fb.m_Country = 0;
+                // store userNum so subsequent char-list requests can use it
+                std::lock_guard<std::mutex> lk(m_sessMx);
+                m_loginSessions[msg.clientId] = LoginSession{userNum, userType};
             }
         }
 
@@ -249,9 +253,85 @@ void AgentServer::dispatch(const sc::net::Message& msg) {
         return;
     }
 
+    if (msg.type == NET_MSG_REQ_CHA_BAINFO) {
+        // Client requests the list of character IDs for the char-select screen.
+        // Source: CAgentServer::MsgSndChaBasicBAInfo (AgentServerMsgGameJoin.cpp).
+        // We skip the CacheServer hop and query DB directly (pre-2011 path).
+        int userNum = 0;
+        {
+            std::lock_guard<std::mutex> lk(m_sessMx);
+            auto it = m_loginSessions.find(msg.clientId);
+            if (it != m_loginSessions.end()) userNum = it->second.userNum;
+        }
+        if (userNum <= 0) {
+            Log("NET_MSG_REQ_CHA_BAINFO: client #" + std::to_string(msg.clientId) +
+                " not logged in — closing");
+            session->Close();
+            return;
+        }
+
+        std::vector<int> charNums;
+        {
+            std::lock_guard<std::mutex> lk(m_dbMx);
+            if (m_dbReady.load()) ProcessCharList(userNum, charNums);
+        }
+
+        NET_CHA_BAINFO_AC_DATA resp{};
+        resp.dwSize = sizeof(NET_CHA_BAINFO_AC_DATA);
+        resp.nType  = NET_MSG_CHA_BAINFO_AC;
+        resp.m_ChaServerTotalNum = static_cast<int32_t>(
+            std::min(charNums.size(), static_cast<size_t>(MAX_ONESERVERCHAR_NUM)));
+        for (int i = 0; i < resp.m_ChaServerTotalNum; ++i)
+            resp.m_ChaDbNum[i] = charNums[static_cast<size_t>(i)];
+
+        Log("Char list for userNum=" + std::to_string(userNum) +
+            " -> " + std::to_string(resp.m_ChaServerTotalNum) + " char(s)");
+
+        auto response = std::make_shared<std::vector<char>>(
+            sc::net::EncodeMessage(NET_MSG_CHA_BAINFO_AC,
+                                   &resp.m_ChaServerTotalNum,
+                                   sizeof(NET_CHA_BAINFO_AC_DATA) - sc::net::kHeaderSize));
+        session->Send(response);
+        return;
+    }
+
+    if (msg.type == NET_MSG_REQ_CHA_BINFO_CA) {
+        // Client requests lobby detail for one character (equipment, stats, etc.).
+        // Source: CAgentServer::MsgSndChaBasicInfo -> dbo.sp_GetChaLobbyInfo.
+        // Full port deferred: SCHARINFO_LOBBY (msgpack) is very large.
+        // TODO: query sp_GetChaLobbyInfo and pack NET_MSG_LOBBY_CHARINFO_AC.
+        if (msg.payloadSize() >= sizeof(NET_CHA_BA_INFO_CA_DATA) - sc::net::kHeaderSize) {
+            const NET_CHA_BA_INFO_CA_DATA* req =
+                reinterpret_cast<const NET_CHA_BA_INFO_CA_DATA*>(msg.bytes.data());
+            Log("NET_MSG_REQ_CHA_BINFO_CA: char detail for ChaDbNum=" +
+                std::to_string(req->m_ChaDbNum) + " deferred (full port TODO)");
+        }
+        return;
+    }
+
     // echo back until handlers are ported (field routing, anti-cheat)
     session->Send(std::make_shared<std::vector<char>>(
         sc::net::EncodeMessage(msg.type, msg.payload(), msg.payloadSize())));
+}
+
+bool AgentServer::ProcessCharList(int userNum, std::vector<int>& charNums) {
+    // Must be called with m_dbMx held.
+    // Mirrors AdoManager::GetChaBAInfo: dbo.sp_ChaListAgent(@UserNum, @ServerGroup)
+    // returns a resultset of ChaNum rows.
+    m_db.ClearParams();
+    m_db.AppendIParamInteger("@UserNum", userNum);
+    m_db.AppendIParamInteger("@ServerGroup", 1);
+    if (!m_db.ExecuteStoredProcedure("dbo.sp_ChaListAgent")) {
+        Log("ProcessCharList: sp_ChaListAgent failed: " + m_db.LastError());
+        return false;
+    }
+    while (!m_db.GetEOF()) {
+        int chaNum = 0;
+        m_db.GetCollect("ChaNum", chaNum);
+        if (chaNum > 0) charNums.push_back(chaNum);
+        m_db.Next();
+    }
+    return true;
 }
 
 void AgentServer::OnRegularSchedule() {
