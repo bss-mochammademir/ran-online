@@ -11,6 +11,7 @@
 #include <iostream>
 #include <memory>
 #include <string>
+#include <thread>
 #include <vector>
 #include <cstring>
 
@@ -62,6 +63,8 @@ int main() {
 
     check("Start() returns 0", srv.Start() == 0);
     check("IsRunning() after Start", srv.IsRunning());
+    // Give the server at least one tick before checks.
+    std::this_thread::sleep_for(std::chrono::milliseconds(120));
     if (!dbConn.empty()) check("DB layer connected", srv.DbReady());
     else std::cout << "  SKIP DB assertions (no SA_PASSWORD/DB_SERVER env)\n";
 
@@ -162,6 +165,86 @@ int main() {
         std::cout << "  SKIP credentials tests (no SA_PASSWORD or setup failed)\n";
     }
 
+    // ---- Char-list smoke (DB-backed) -----------------------------------------
+    // Login first, then send NET_MSG_REQ_CHA_BAINFO and verify we get
+    // NET_MSG_CHA_BAINFO_AC back.
+    if (!dbConn.empty() && dbSetupOk && validLoginPassed) {
+        asio::io_context cio3;
+        tcp::socket s3(cio3);
+        boost::system::error_code ec3;
+        s3.connect(tcp::endpoint(asio::ip::make_address("127.0.0.1"), port), ec3);
+        if (!ec3) {
+            // 1. Login first to set userNum session state.
+            IDN_NET_LOGIN_DATA lreq = {};
+            lreq.dwSize = sizeof(IDN_NET_LOGIN_DATA);
+            lreq.nType  = IDN_NET_MSG_LOGIN;
+            lreq.m_nChannel = 1;
+            std::strncpy(lreq.m_szUserid,  "smoketest", sizeof(lreq.m_szUserid)  - 1);
+            std::strncpy(lreq.m_szPassword, "smoke123",  sizeof(lreq.m_szPassword) - 1);
+            auto loginPkt = sc::net::EncodeMessage(IDN_NET_MSG_LOGIN, &lreq.m_nChannel,
+                                sizeof(IDN_NET_LOGIN_DATA) - sc::net::kHeaderSize);
+            asio::write(s3, asio::buffer(loginPkt), ec3);
+
+            // Drain login response.
+            {
+                std::vector<sc::net::Message> resp;
+                sc::net::MessageFramer framer;
+                auto buf = std::make_shared<std::array<char, 512>>();
+                std::function<void()> rd = [&]() {
+                    s3.async_read_some(asio::buffer(*buf),
+                        [&](const boost::system::error_code& e, std::size_t n) {
+                            if (e) return;
+                            framer.Feed(buf->data(), n, resp);
+                            if (resp.empty()) rd();
+                        });
+                };
+                rd();
+                cio3.run_for(std::chrono::milliseconds(600));
+                cio3.restart();
+                check("char-list prelogin: got login response",
+                      !resp.empty() && resp[0].type == NET_MSG_LOGIN_FB);
+            }
+
+            // 2. Send NET_MSG_REQ_CHA_BAINFO (empty payload — server only needs header).
+            NET_CHA_REQ_BAINFO_DATA creq = {};
+            creq.dwSize = sizeof(NET_CHA_REQ_BAINFO_DATA);
+            creq.nType  = NET_MSG_REQ_CHA_BAINFO;
+            auto charPkt = sc::net::EncodeMessage(NET_MSG_REQ_CHA_BAINFO,
+                               &creq.m_LauncherVer,
+                               sizeof(NET_CHA_REQ_BAINFO_DATA) - sc::net::kHeaderSize);
+            asio::write(s3, asio::buffer(charPkt), ec3);
+
+            std::vector<sc::net::Message> cresp;
+            sc::net::MessageFramer cframer;
+            auto cbuf = std::make_shared<std::array<char, 1024>>();
+            std::function<void()> crd = [&]() {
+                s3.async_read_some(asio::buffer(*cbuf),
+                    [&](const boost::system::error_code& e, std::size_t n) {
+                        if (e) return;
+                        cframer.Feed(cbuf->data(), n, cresp);
+                        if (cresp.empty()) crd();
+                    });
+            };
+            crd();
+            cio3.run_for(std::chrono::milliseconds(800));
+
+            check("char-list: got NET_MSG_CHA_BAINFO_AC",
+                  !cresp.empty() && cresp[0].type == NET_MSG_CHA_BAINFO_AC,
+                  cresp.empty() ? "no response" : "type=" + std::to_string(cresp[0].type));
+            if (!cresp.empty() && cresp[0].type == NET_MSG_CHA_BAINFO_AC) {
+                const NET_CHA_BAINFO_AC_DATA* ac =
+                    reinterpret_cast<const NET_CHA_BAINFO_AC_DATA*>(cresp[0].bytes.data());
+                check("char-list: ChaServerTotalNum >= 0",
+                      ac->m_ChaServerTotalNum >= 0,
+                      "count=" + std::to_string(ac->m_ChaServerTotalNum));
+            }
+        } else {
+            std::cout << "  SKIP char-list test (client connect failed)\n";
+        }
+    } else {
+        std::cout << "  SKIP char-list test (no DB or login not tested)\n";
+    }
+
     check("server dispatched requests", srv.Processed() >= (dbSetupOk ? 2 : 0),
           "processed=" + std::to_string(srv.Processed()));
     check("OnUpdate ticked", srv.Updates() >= 1);
@@ -180,6 +263,7 @@ int main() {
 
     std::cout << "\n";
     if (g_fail == 0 && (dbConn.empty() || (validLoginPassed && invalidLoginPassed))) {
+        (void)validLoginPassed; (void)invalidLoginPassed;
         std::cout << "AGENTSERVER SMOKE OK: AgentServer login validation verified.\n";
         return 0;
     }
