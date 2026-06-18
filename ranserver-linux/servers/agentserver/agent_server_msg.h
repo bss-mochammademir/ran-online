@@ -5,16 +5,34 @@
 
 namespace sc { namespace servers {
 
-constexpr uint32_t IDN_NET_MSG_LOGIN      = 233; // Client->Agent : IDN login request
-constexpr uint32_t NET_MSG_LOGIN_FB       = 223; // Agent->Client : login result
-constexpr uint32_t NET_MSG_REQ_CHA_BINFO_CA = 279; // Client->Agent : request single char detail
-constexpr uint32_t NET_MSG_REQ_CHA_BAINFO   = 280; // Client->Agent : request char ID list
-constexpr uint32_t NET_MSG_CHA_BAINFO_AC    = 281; // Agent->Client : char ID list response
-
-// CAgentGsUserCheck; s_NetGlobal.h verified: shuffle disabled, sequential values.
-// NET_MSG_REQ_CHA_BINFO_CA=279, NET_MSG_REQ_CHA_BAINFO=280, NET_MSG_CHA_BAINFO_AC=281
+// EMNET_MSG ordinals. s_NetGlobal.h has _USE_MESSAGE_SHUFFLE_ DISABLED, so the
+// enum takes sequential positional values. Computed by counting enumerators from
+// the last explicit anchor NET_MSG_UPDATE_TRACING_CHARACTER=221 (no #ifdef gaps
+// in the range). NOTE: the inline `// 279/280/281/291` comments in the source
+// are STALE — four *_TEST_CHA_* entries were inserted later, shifting everything
+// by +4. Trust the computed ordinal, not the comment. See memory: enum-ordinal-not-comment.
+constexpr uint32_t IDN_NET_MSG_LOGIN          = 233; // Client->Agent : IDN login request
+constexpr uint32_t NET_MSG_LOGIN_FB           = 223; // Agent->Client : login result
+constexpr uint32_t NET_MSG_REQ_CHA_BINFO_CA   = 283; // Client->Agent : request single char detail
+constexpr uint32_t NET_MSG_REQ_CHA_BAINFO     = 284; // Client->Agent : request char ID list
+constexpr uint32_t NET_MSG_CHA_BAINFO_AC      = 285; // Agent->Client : char ID list response
+constexpr uint32_t NET_MSG_LOBBY_CHARINFO_AC      = 298; // Agent->Client : char lobby detail (msgpack)
+constexpr uint32_t NET_MSG_LOBBY_CHARINFO_AC_END  = 299; // Agent->Client : end of char detail stream
 
 constexpr int MAX_ONESERVERCHAR_NUM = 30; // per RanLogic/Network/NetLogicDefine.h
+
+// NET_MSG_PACK envelope head (RanLogic/s_NetGlobal.h:3272). On the original
+// Win32 32-bit client/server: HEAD_SIZE = sizeof(NET_MSG_GENERIC)=8 + m_Crc=4 +
+// m_DataSize=4 = 16. CRITICAL: m_DataSize is declared `size_t` in the source —
+// 4 bytes on Win32, but 8 on Linux x64. To stay wire-compatible with the 32-bit
+// client we MUST encode it as a fixed uint32, NOT size_t. The 8-byte generic
+// header (dwSize,nType) is emitted by EncodeMessage; the bytes below follow it.
+struct NET_MSG_PACK_BODY {
+    uint32_t m_Crc;       // 0 unless UseCrc (default false in SetData)
+    uint32_t m_DataSize;  // msgpack payload length (fixed 32-bit; NOT size_t)
+    // followed by m_DataSize bytes of msgpack
+};
+constexpr uint32_t NET_MSG_PACK_HEAD_SIZE = 16; // 8 (generic) + 4 (crc) + 4 (datasize)
 
 #define USR_ID_LENGTH       20
 #define MD5_MAX_LENGTH      32
